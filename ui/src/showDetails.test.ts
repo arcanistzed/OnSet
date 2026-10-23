@@ -29,7 +29,8 @@ describe('effects', () => {
   it('lists every effect once, with reactivity and glow going past 1', () => {
     const keys = EFFECTS.flatMap(g => g.items.map(i => i.key));
     expect(new Set(keys).size).toBe(keys.length);
-    expect(keys).toHaveLength(13);
+    expect(keys).toHaveLength(14);
+    expect(keys).toContain('sparks');
     const max = Object.fromEntries(EFFECTS.flatMap(g => g.items.map(i => [i.key, i.max])));
     expect(max.reactivity).toBe(2);
     expect(max.bloom).toBe(1.5);

@@ -16,6 +16,7 @@ use crate::card::{Card, CardFrame};
 use crate::gpu::Gpu;
 use crate::hot_reload::ShaderWatcher;
 use crate::hud::{Hud, HudInfo};
+use crate::particles::{ParticleFrame, ParticleLayer};
 use crate::scene::{FrameBindings, HISTORY_COLS, Scene, ShaderError};
 use crate::scenes::scene_info;
 use crate::stage::{HDR_FORMAT, PostUniforms, Stage};
@@ -100,6 +101,8 @@ pub struct Renderer {
     format: wgpu::TextureFormat,
     bindings: FrameBindings,
     stage: Stage,
+    /// Sparks over every scene; `None` when its shader failed to compile (logged).
+    particles: Option<ParticleLayer>,
     scenes: Vec<Box<dyn Scene>>,
     active: usize,
     size: (u32, u32),
@@ -168,10 +171,18 @@ impl Renderer {
         let stage = Stage::new(gpu, format, size, settings.quality.bloom_levels());
         let mut bindings = FrameBindings::new(gpu);
         bindings.set_prev_views(gpu, stage.mix_views());
+        let particles = match ParticleLayer::new(gpu, &bindings.layout) {
+            Ok(layer) => Some(layer),
+            Err(e) => {
+                tracing::error!("particle layer disabled: {e}");
+                None
+            }
+        };
         Self {
             format,
             bindings,
             stage,
+            particles,
             scenes: Vec::new(),
             active: 0,
             size,
@@ -926,6 +937,25 @@ impl Renderer {
             } else {
                 let active = self.active.min(self.scenes.len() - 1);
                 self.scenes[active].render(gpu, encoder, self.stage.mix_view(cur), &self.bindings);
+            }
+            // The particle layer goes over the picture and under the bloom.
+            if let Some(layer) = self.particles.as_mut().filter(|_| self.settings.fx.particles) {
+                layer.render(
+                    gpu,
+                    encoder,
+                    self.stage.mix_view(cur),
+                    &self.bindings,
+                    &ParticleFrame {
+                        dt,
+                        kick: ms.hits.kick,
+                        snare: ms.hits.snare,
+                        drop_hit: fx.drop_hit,
+                        cue_hit: fx.cue_hit,
+                        amount: self.settings.fx.sparks,
+                        quality: self.settings.quality,
+                        aspect: internal.0 as f32 / internal.1.max(1) as f32,
+                    },
+                );
             }
             self.stage.finish(gpu, encoder, cur, target);
         }

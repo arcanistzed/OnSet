@@ -41,6 +41,11 @@ pub struct FxSettings {
     pub moves: f32,
     /// Full-screen strobe on drops. Off by default: it can trigger photosensitive seizures.
     pub strobe: bool,
+    /// The particle layer over every scene: sparks on kicks and snares, debris on drops, a
+    /// puff in the cue's colour when one passes.
+    pub particles: bool,
+    /// How many particles each hit throws (0..1).
+    pub sparks: f32,
 }
 
 impl FxSettings {
@@ -59,6 +64,8 @@ impl FxSettings {
         buildup: 0.35,
         moves: 0.3,
         strobe: false,
+        particles: true,
+        sparks: 0.3,
     };
     pub const CLUB: Self = Self {
         reactivity: 1.0,
@@ -75,6 +82,8 @@ impl FxSettings {
         buildup: 0.65,
         moves: 0.55,
         strobe: false,
+        particles: true,
+        sparks: 0.5,
     };
     pub const FESTIVAL: Self = Self {
         reactivity: 1.35,
@@ -91,6 +100,8 @@ impl FxSettings {
         buildup: 1.0,
         moves: 0.85,
         strobe: false,
+        particles: true,
+        sparks: 0.8,
     };
 }
 

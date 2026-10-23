@@ -35,7 +35,8 @@ export const EFFECTS:{group:string;items:{key:string;label:string;hint:string;ma
   {group:'Light',items:[
     {key:'flashes',label:'Flashes',hint:'White flash at drops, tinted flashes when the playhead passes a cue.',max:1},
     {key:'bloom',label:'Glow',hint:'Bloom around bright light.',max:1.5},
-    {key:'trails',label:'Trails',hint:'Scenes that use feedback leave light trails behind.',max:1}]},
+    {key:'trails',label:'Trails',hint:'Scenes that use feedback leave light trails behind.',max:1},
+    {key:'sparks',label:'Sparks',hint:'How many particles fly on each kick and snare, and how much debris a drop throws.',max:1}]},
   {group:'Colour and surprises',items:[
     {key:'colour',label:'Colour changes',hint:'Hue swings at drops and new phrases; the palette always starts from the cover.',max:1},
     {key:'inversions',label:'Inversions',hint:'Light and dark swap for a beat at some drops.',max:1},
@@ -52,6 +53,8 @@ export function EffectsCard({fx,change}:{fx:Settings;change:Change}){
       <h4 className="show-sub">{g.group}</h4>
       {g.items.map(i=><Slider key={i.key} label={i.label} hint={i.hint} value={fx[i.key]??0} min={0} max={i.max} format={pct} onChange={v=>change(withEffect(fx,i.key,v))}/>)}
     </div>)}
+    <h4 className="show-sub">Particles</h4>
+    <Check label="Sparks on kicks and snares, debris on drops, a puff in the cue's colour when one passes" checked={fx.particles!==false} onChange={v=>change(withEffect(fx,'particles',v))}/>
     <h4 className="show-sub">Strobe</h4>
     <Check label="Strobe after drops. Off by default: strobing can trigger seizures in people with photosensitive epilepsy" checked={!!fx.strobe} onChange={v=>change(withEffect(fx,'strobe',v))}/>
   </Card>;

@@ -12,6 +12,7 @@ pub mod hud;
 pub mod lyrics;
 /// How the HUD, track card and lyrics look; plain settings, kept in `onset-core`.
 pub use onset_core::overlay_options;
+pub mod particles;
 pub mod quad;
 pub mod renderer;
 pub mod replay;
