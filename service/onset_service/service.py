@@ -44,6 +44,16 @@ def job_age(job, now):
     return (now - updated).total_seconds()
 
 
+def mark_chunk_joins(segments, joins, margin=15.):
+    """EDMFormer splits long tracks into chunks and treats each chunk as a whole track, so the
+    sections around a join get start-of-track or end-of-track labels: mid-track "intro" on La
+    Danza and Ray Of Solar, "outro" on Joya, against allin1's chorus, verse and instrumental
+    (2026-10-24). Their boundaries held; their labels are marked unreliable."""
+    return [{**s, "label_reliable": False}
+            if any(s["start"] <= j + margin and s["end"] >= j - margin for j in joins) else s
+            for s in segments]
+
+
 def stalled_jobs(jobs, now, limit=STALL_S):
     """Running jobs whose record has not changed for `limit` seconds."""
     return [j for j in jobs if j.get("state") == "running" and (job_age(j, now) or 0) > limit]
@@ -595,7 +605,7 @@ class Service:
                                 energy_profile=compact_energy, local_keys=a.get("local_keys", []),
                                 evidence=self.store.artifact("enrichment", tid), flags=a.get("flags", []))
             profiles[-1]['experimental_sources']={name:{'state':value.get('state'),'confidence':'unverified',
-                'segments':value.get('data',{}).get('segments',[]),'error':value.get('error')}
+                'segments':mark_chunk_joins(value.get('data',{}).get('segments',[]),value.get('data',{}).get('chunk_joins') or []),'error':value.get('error')}
                 for name,value in a.get('deep',{}).get('models',{}).items() if name in {'edmformer','allin1'}}
         routes=[]
         route_options=[]
