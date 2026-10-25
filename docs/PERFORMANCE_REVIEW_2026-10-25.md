@@ -94,4 +94,14 @@ All on copies (`.test-desktop/<name>` or D:\Offload), never against the live wor
 
 ## Proposed phase 2 order
 
-Items 1, 2, 3, 4, then 5–7, then 9, 10 and 8. Items 12–14 come only after 8, and P3 only after GPU timing exists. Each change gets a regression test and a before/after number recorded here. Clearing the existing duplicate `audio.wav` files and the superseded cache folders is the user's decision: recycle, never delete, and only after a report of what would go.
+Items 1, 2, 3, 4, then 5–7, then 9, 10 and 8. Items 12–14 come only after 8, and P3 only after GPU timing exists. Each change gets a regression test and a before/after number recorded here. Clearing the existing duplicate `audio.wav` files and the superseded cache folders is the user's decision, made only after a report of what would go. The `audio-copies` tool (item 2) removes only byte-identical copies, which the next deep run can re-create; anything else is recycled, not deleted.
+
+## Phase 2 progress
+
+Items 2–4 are done in source, as Python service changes with regression tests. The full service suite (181 tests) passed on 2026-10-25. None of them is in an installed build yet.
+
+- **Item 2, `8a39d4e`.** Cached deep results are matched against the native PCM's hash. The worker's `audio.wav` copy is made only when a model has to run, and it is removed once every model completes. `deep-results.json` keeps the same `pcm_sha256`, so existing results are reused and nothing re-runs. The copies left by earlier runs stay until the user asks: `onset_service --home <workspace> audio-copies` (also an RPC) lists them, and `--apply` removes only those whose deep results are complete and whose native PCM is byte-identical. The service refuses to start on a workspace the app holds, so close OnSet first. On the real workspace that is up to 5.6 GB; not run.
+- **Item 3, `3a84f3b`.** `Store.invalidate` selects only records whose JSON contains the track's id, skips ones already stale, and writes the rest in one commit. On a scratch store of 30,000 transitions over 160 tracks: 2.71 s before, 0.47 s after, 0.32 s when nothing is left to mark. Not yet timed on a copy of the real workspace.
+- **Item 4, `3bdca60`.** A job checkpoint is saved and pushed to the screens when its stage changes, when a paused job resumes, at most once a second while only the fraction moves, and otherwise every 30 s (the stall limit is 300 s). The deep worker's loop used to save and push twice a second; it now does so once per model plus the heartbeat. Write bytes during a real deep job are not yet measured.
+
+Item 1 (the show window's busy-spin) waits for a cargo slot with D:\Offload plugged in.
