@@ -1590,7 +1590,7 @@ mod tests {
             last = engine.tick_at(epoch + Duration::from_secs_f64(t));
             followed.push((t, engine.deck));
             // `ONSET_BLEND_TRACE=1`: the ear's view every 2 s, to see why a blend went wrong.
-            if ticks % 120 == 0 && std::env::var_os("ONSET_BLEND_TRACE").is_some() {
+            if ticks.is_multiple_of(120) && std::env::var_os("ONSET_BLEND_TRACE").is_some() {
                 let waveforms = engine.ear.as_ref().map(|e| e.ear.decks().len());
                 eprintln!(
                     "{t:6.1} s  following {:?}  waveforms {waveforms:?}  heard {:?}  ear {:?}",
