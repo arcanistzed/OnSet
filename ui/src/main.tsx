@@ -27,7 +27,7 @@ import {RekordboxLink} from './RekordboxLink';
 import {RekordboxHistory} from './RekordboxHistory';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
-import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT} from './library';
+import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT,reviewQueue,queueStep} from './library';
 
 const api=window.onset;
 const keyLabel=(k:any)=>typeof k==='string'?k:k?.name||'';
@@ -126,7 +126,7 @@ function App(){
   const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
   const [priority,setPriority]=useState<Record<string,any>>({}),[planJob,setPlanJob]=useState<string|null>(null),planJobRef=useRef<string|null>(null);
-  const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null);
+  const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null),queueNav=useRef<{prev:string|null;next:string|null}>({prev:null,next:null}),lastQueue=useRef<string[]>([]);
   const track=tracks.find(t=>t.id===selected)||null;
   useEffect(()=>{window.scrollTo({top:0});},[page,selected]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(''),5000);return()=>clearTimeout(timer);},[message]);
@@ -149,8 +149,9 @@ function App(){
   // Keep the planner brief across sessions; wait for the saved value before writing so defaults never overwrite it.
   useEffect(()=>{if(!api||!briefLoaded.current)return;const timer=setTimeout(()=>api.call('settings',{key:'set_brief',value:brief}).catch((e:any)=>setError(e.message)),500);return()=>clearTimeout(timer);},[brief]);
   useEffect(()=>{if(tracks.length)setBrief((b:any)=>pruneBriefTracks(b,tracks.map(t=>t.id)));},[tracks]);
-  useEffect(()=>{const handle=(event:KeyboardEvent)=>{const el=event.target as HTMLElement;if(page!=='track'||!track||el?.closest('input,textarea,select,[contenteditable=true]'))return;
+  useEffect(()=>{const handle=(event:KeyboardEvent)=>{const el=event.target instanceof HTMLElement?event.target:null;if(page!=='track'||!track||el?.closest('input,textarea,select,[contenteditable=true]'))return;
     if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='z'){event.preventDefault();run(()=>api.call('undo',{id:track.id}));return;}
+    if((event.key==='['||event.key===']')&&!event.ctrlKey&&!event.metaKey&&!event.altKey){const to=event.key===']'?queueNav.current.next:queueNav.current.prev;if(to){event.preventDefault();setSelected(to);}return;}
     if(el?.closest('button'))return;
     if(event.code==='Space'){event.preventDefault();togglePlay();}
   };window.addEventListener('keydown',handle);return()=>window.removeEventListener('keydown',handle);},[page,track]);
@@ -198,6 +199,11 @@ function App(){
   const unsorted=tracks.filter(t=>matchesFilters(t,libraryFilters)&&(`${t.title} ${t.artist} ${t.genres.join(' ')} ${keyLabel(t.key)} ${canonicalKey(t.key)||''} ${t.bpm||''}`).toLowerCase().includes(query.toLowerCase())&&(filter==='all'||filter==='review'&&t.review_state!=='reviewed'||filter==='ready'&&t.analysis_state==='complete'));
   // The review view puts disagreements, stale cues and high-impact cues first.
   const filtered=filter==='review'?[...unsorted].sort((a,b)=>(priority[b.id]?.score||0)-(priority[a.id]?.score||0)):unsorted;
+  // Track review steps through the same queue the Library's Review queue view shows.
+  const queue=reviewQueue(tracks,priority),queuePosition=selected?queue.indexOf(selected):-1;
+  if(queuePosition>=0)lastQueue.current=queue;
+  const prevInQueue=queueStep(queue,selected,-1,lastQueue.current),nextInQueue=queueStep(queue,selected,1,lastQueue.current);
+  queueNav.current={prev:prevInQueue,next:nextInQueue};
   const playlistNames=[...new Set(tracks.flatMap(t=>(t as any).rekordbox_playlists||[]))].sort();
   const ids=analysisSelection(tracks,filtered,marked);
   const hiddenSelected=ids.filter(id=>!filtered.some(t=>t.id===id)).length;
@@ -288,8 +294,16 @@ function App(){
               <Stat label="Review" value={<Pill state={track.review_state}>{track.review_state}</Pill>}/>
             </div>
           </div>
-          <select aria-label="Choose track" value={selected||''} onChange={e=>setSelected(e.target.value)}>{tracks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select>
+          <div className="queue-nav">
+            <div className="row" style={{flexWrap:'nowrap'}}>
+              <Button size="sm" kind="ghost" icon="up" label="Previous in review queue ([)" disabled={!prevInQueue} onClick={()=>prevInQueue&&setSelected(prevInQueue)}/>
+              <select aria-label="Choose track" value={selected||''} onChange={e=>setSelected(e.target.value)}>{tracks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select>
+              <Button size="sm" icon="down" disabled={!nextInQueue} title="Next in review queue (])" onClick={()=>nextInQueue&&setSelected(nextInQueue)}>Next in queue</Button>
+            </div>
+            <small className="muted">{queuePosition>=0?`${queuePosition+1} of ${queue.length} in the review queue`:queue.length?`Not in the review queue · ${queue.length} waiting`:'Review queue is empty'} · <kbd>[</kbd> <kbd>]</kbd></small>
+          </div>
         </div>
+        {priority[track.id]?.reasons?.length>0&&track.review_state!=='reviewed'&&<p className="hint queue-reasons"><Icon name="alert" size={14}/>In the review queue because: {priority[track.id].reasons.join(' · ')}</p>}
         <Card className="wave-card">
           <Timeline onSection={sections=>run(()=>api.call('edit',{id:track.id,changes:{sections}}),'Section boundary corrected')} track={track} position={position} onSeek={seek} snap={snap} onCue={c=>{seek(c.time);audio.current?.play().catch(e=>{if(e.name!=='AbortError')setError(e.message);});}} onMove={(c,t)=>run(()=>api.call('review',{id:track.id,cue_id:c.id,status:'proposed',position:t}),'Cue moved; approve when ready')}/>
           <div className="transport">
@@ -303,6 +317,10 @@ function App(){
         </Card>
         <div style={{marginTop:20}}><Tabs value={trackTab} onChange={setTrackTab} options={[{id:'cues',label:'Cues',count:track.cues.length},{id:'profile',label:'Profile'},{id:'evidence',label:'Evidence'},{id:'stems',label:'Stems'},{id:'corrections',label:'Corrections'}]}/></div>
         {trackTab==='cues'&&<>
+          {track.cues.length>0&&track.cues.every(c=>c.review!=='proposed')&&nextInQueue&&<div className="write-preview row" role="status">
+            <span className="grow"><Icon name="check" size={14}/> Every cue on this track is decided.</span>
+            <Button size="sm" kind="primary" icon="down" onClick={()=>setSelected(nextInQueue)}>Next in queue: {tracks.find(t=>t.id===nextInQueue)?.title}</Button>
+          </div>}
           <CueReview track={track} run={run} seek={seek} play={()=>audio.current?.play().catch(e=>setError(e.message))}/>
           <Card title="Write to rekordbox" actions={<>
             <Button size="sm" onClick={()=>run(async()=>{const r=await api.call('rekordbox-preview',{track_ids:[track.id]});setWritePreview(r);return r;})}>Preview memory cues</Button>

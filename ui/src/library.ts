@@ -122,3 +122,20 @@ export function duration(minutes:number){
  if(minutes<60)return `about ${Math.max(1,Math.round(minutes))} min`;
  const hours=minutes/60;return `about ${hours<10?hours.toFixed(1):Math.round(hours)} hours`;
 }
+
+/** The review queue in the Library's order: tracks not yet reviewed, highest priority first (ties keep
+ *  library order). */
+export function reviewQueue(tracks:{id:string;review_state:string}[],priority:Record<string,{score?:number}>){
+ return tracks.map((t,i)=>({t,i})).filter(({t})=>t.review_state!=='reviewed')
+  .sort((a,b)=>(priority[b.t.id]?.score||0)-(priority[a.t.id]?.score||0)||a.i-b.i).map(({t})=>t.id);
+}
+/** The track before or after `current` in `queue`. A track that just left the queue (reviewed) steps from
+ *  its place in `previous`, the queue as it was while it was open; from anywhere else "next" is the top. */
+export function queueStep(queue:string[],current:string|null,delta:1|-1,previous:string[]=[]){
+ const i=current?queue.indexOf(current):-1;
+ if(i>=0)return queue[i+delta]??null;
+ const j=current?previous.indexOf(current):-1;
+ if(j<0)return delta>0?queue[0]??null:null;
+ const around=delta>0?previous.slice(j+1):previous.slice(0,j).reverse();
+ return around.find(id=>queue.includes(id))??null;
+}
