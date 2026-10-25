@@ -36,14 +36,13 @@ OUTRO_TOL = 4            # ...outros within 4: where an outro starts is a matter
 GRID_PHASE = .12         # the grid is on the kick when the kick lands within 12% of a beat of it
 PRESENT_DB = 6           # a bar has its bass when its low band is within 6 dB of the track's loud level
 ABSENT_DB = 10           # and lacks it when 10 dB or more below
-STRONG_DB = 9            # a spectral step this large decides a split vote on its own
 
 ITEMS = {
     "tempo": "BPM, including half or double time",
     "grid": "Grid on the kick",
     "key": "Key (Camelot)",
-    "groove": "First full groove (kick and bass in): what OnSet's D cue marks",
-    "drop": "Main drop (the bass returning after a low section; rekordbox's first Chorus)",
+    "groove": "First full groove (kick and bass in): current stored D behaviour",
+    "drop": "Main drop candidates (the requested D target; not yet implemented)",
     "breakdown": "First breakdown after the groove",
     "outro": "Outro start",
 }
@@ -61,7 +60,18 @@ def seconds(text):
     if text in (None, "", "null"):
         return None
     m = re.fullmatch(r"\s*(\d+):(\d{1,2}(?:\.\d+)?)\s*", str(text))
-    return int(m[1]) * 60 + float(m[2]) if m else None
+    return int(m[1]) * 60 + float(m[2]) if m and float(m[2]) < 60 else None
+
+
+def gemini_for_track(p, results):
+    """Prefer the submitted audio path; never pick an arbitrary substring match."""
+    normal = lambda s: str(s).replace("\\", "/").casefold()
+    exact = [v for k, v in results.items() if normal(k) == normal(p["path"])]
+    if len(exact) == 1:
+        return exact[0]
+    title = (p.get("title") or "").casefold()
+    matches = [v for k, v in results.items() if title and title in normal(k)]
+    return matches[0] if len(matches) == 1 else None
 
 
 def profiles(db, titles, everything):
@@ -176,21 +186,26 @@ def sources(p, spec, beats, gemini):
     models = (a.get("deep") or {}).get("models", {})
     ess = (models.get("essentia") or {}).get("data") or {}
     ess_keys = [camelot(f"{v['key']} {v['scale']}") for v in ess.values() if isinstance(v, dict) and v.get("key")]
+    ess_majority = next((k for k in ess_keys if ess_keys.count(k) > len(ess_keys) / 2), None)
     allin = [s for s in ((models.get("allin1") or {}).get("data") or {}).get("segments", [])]
     first = lambda label: next((bar_of(s["start"], downbeats) for s in allin if s.get("label") == label), None)
     g = gemini or {}
+    def gemini_bar(field):
+        t = seconds(g.get(field))
+        return bar_of(t, downbeats) if t is not None and 0 <= t < float(a["duration"]) else None
     out = {
         "tempo": {"onset": a.get("bpm"), "rekordbox": rbm.get("bpm") or rb.get("bpm"),
                   "allin1": (beats or {}).get("bpm"), "gemini": g.get("bpm")},
         "key": {"onset": (a.get("key") or {}).get("camelot"), "rekordbox": camelot(rbm.get("key")),
-                "essentia": max(set(ess_keys), key=ess_keys.count) if ess_keys else None},
-        "groove": {"onset": sec.get("drop"), "spectral": spec["groove"], "gemini": bar_of(seconds(g.get("drop")), downbeats),
+                "essentia": ess_majority},
+        "groove": {"onset": sec.get("drop"), "spectral": spec["groove"], "gemini": gemini_bar("drop"),
                    "allin1": next((bar_of(s["start"], downbeats) for s in allin if s.get("label") not in ("intro", "start")), None)},
-        "drop": {"rekordbox": rbs.get("drop"), "spectral": spec["drop"], "allin1": first("chorus")},
+        "drop": {"rekordbox": rbs.get("drop"), "spectral": spec["drop"], "allin1": first("chorus"),
+                 "gemini": gemini_bar("main_drop")},
         "breakdown": {"onset": sec.get("breakdown"), "rekordbox": rbs.get("breakdown"), "spectral": spec["breakdown"],
-                      "gemini": bar_of(seconds(g.get("breakdown")), downbeats), "allin1": first("break")},
+                      "gemini": gemini_bar("breakdown"), "allin1": first("break")},
         "outro": {"onset": sec.get("outro"), "rekordbox": rbs.get("outro"), "spectral": spec["outro"],
-                  "gemini": bar_of(seconds(g.get("outro")), downbeats), "allin1": first("outro")},
+                  "gemini": gemini_bar("outro"), "allin1": first("outro")},
     }
     return {item: {k: v for k, v in values.items() if v is not None} for item, values in out.items()}
 
@@ -200,17 +215,24 @@ def judge_tempo(values):
     if not values:
         return {"status": "no evidence"}
     reference = values.get("rekordbox") or values.get("onset")
+    if not reference:
+        return {"status": "single source", "reason": "no stored grid tempo to compare"}
     ratio = lambda v: v / reference
     same = [k for k, v in values.items() if abs(ratio(v) - 1) <= TEMPO_TOL]
     double = [k for k, v in values.items() if abs(ratio(v) / 2 - 1) <= .02]
     half = [k for k, v in values.items() if abs(ratio(v) * 2 - 1) <= .02]
     independent = [k for k in values if k not in ("onset", "rekordbox")]
+    categories = {"same" if k in same else "double" if k in double else "half" if k in half else "other"
+                  for k in independent}
+    if len(categories) > 1:
+        return {"status": "ambiguous", "value": reference,
+                "reason": "independent tempo estimates disagree: " + ", ".join(f"{k} {values[k]}" for k in independent)}
     if any(k in double for k in independent) and not any(k in same for k in independent):
-        return {"status": "decided", "value": round(reference * 2, 2),
+        return {"status": "candidate", "value": round(reference * 2, 2),
                 "reason": f"{', '.join(k for k in independent if k in double)} count beats twice as fast as the {reference} BPM grid: "
                           "the grid is half time"}
     if any(k in half for k in independent) and not any(k in same for k in independent):
-        return {"status": "decided", "value": round(reference / 2, 2),
+        return {"status": "candidate", "value": round(reference / 2, 2),
                 "reason": f"{', '.join(k for k in independent if k in half)} count beats half as fast as the {reference} BPM grid"}
     if any(k in same for k in independent):
         return {"status": "agree", "value": reference, "reason": f"{', '.join(same)} within 1%"}
@@ -258,7 +280,7 @@ def judge_key(values):
     if counts[best] >= 2 and values.get("onset") == best:
         return {"status": "agree", "value": best, "reason": f"{', '.join(k for k, v in values.items() if v == best)} say {best}"}
     if counts[best] >= 2:
-        return {"status": "decided", "value": best,
+        return {"status": "candidate", "value": best,
                 "reason": f"{', '.join(k for k, v in values.items() if v == best)} say {best}; OnSet says {values.get('onset')}"}
     return {"status": "ambiguous", "value": values.get("onset"), "reason": "every source names a different key"}
 
@@ -267,25 +289,26 @@ def judge_event(item, values, spec):
     if not values:
         return {"status": "no evidence"}
     tol = OUTRO_TOL if item == "outro" else EVENT_TOL
-    best, cluster = None, {}
-    for v in values.values():
-        near = {k: w for k, w in values.items() if abs(w - v) <= tol}
-        if len(near) > len(cluster):
-            best, cluster = v, near
+    # A cluster's entire span must fit the tolerance. A middle vote must not join two
+    # incompatible endpoints, and equal-sized competing clusters cannot decide a cue.
+    ordered = sorted(values.items(), key=lambda pair: pair[1])
+    clusters = [dict((k, w) for k, w in ordered[i:] if w - v <= tol)
+                for i, (_, v) in enumerate(ordered)]
+    size = max(map(len, clusters))
+    winners = [c for c in clusters if len(c) == size]
+    cluster = winners[0]
+    if len(winners) > 1 and size >= 2:
+        return {"status": "ambiguous", "value": values.get("onset"),
+                "reason": "equally supported competing event clusters: " +
+                          "; ".join(", ".join(f"{k} bar {v}" for k, v in c.items()) for c in winners)}
     independent = [k for k in cluster if k != "onset"]
     value = int(np.median(list(cluster.values())))
     onset = values.get("onset")
     if len(cluster) >= 2 and independent:
         if onset is None or abs(onset - value) <= tol:
             return {"status": "agree", "value": value, "reason": f"{', '.join(cluster)} within {tol} bars"}
-        return {"status": "decided", "value": value,
+        return {"status": "candidate", "value": value,
                 "reason": f"{', '.join(cluster)} agree on bar {value}; OnSet says bar {onset}"}
-    strength = (spec.get("step_db") or {}).get(item)
-    if len(values) == 2 and "spectral" in values and strength is not None and abs(strength) >= STRONG_DB:
-        # Two sources disagreeing: a large, clean step in the audio settles it. Three or more that
-        # all disagree are left open, however large the step.
-        return {"status": "decided", "value": values["spectral"],
-                "reason": f"two sources disagree; the low band steps {strength:+.0f} dB at bar {values['spectral']}, which settles it"}
     if len(values) == 1:
         return {"status": "single source", "value": next(iter(values.values())), "reason": f"only {next(iter(values))} has it"}
     return {"status": "ambiguous", "value": onset, "reason": "sources split: " + ", ".join(f"{k} bar {v}" for k, v in values.items())}
@@ -347,7 +370,7 @@ def main():
     for p in profiles(args.workspace, args.titles, args.all):
         a = p["analysis"]
         spec = spectral(p["path"], np.asarray(a["downbeats"], dtype=float), float(a["duration"]))
-        g = next((v for k, v in gemini.items() if k.lower() in p["title"].lower() or p["title"].lower() in k.lower()), None)
+        g = gemini_for_track(p, gemini)
         beats = allin1_beats(p)
         found = sources(p, spec, beats, g)
         verdicts = {"tempo": judge_tempo(found["tempo"]), "grid": judge_grid(p, spec, beats), "key": judge_key(found["key"])}
@@ -360,7 +383,7 @@ def main():
         render(p, spec, found, png)
         report.append({"title": p["title"], "track_id": p["id"], "revision": p["revision"], "sources": found,
                        "verdicts": verdicts, "spectral": {k: v for k, v in spec.items() if k not in ("low_db", "full_db")},
-                       "allin1_beats": beats,
+                       "allin1_beats": beats, "gemini": g,
                        "cues": [(c["role"], round(c["time"], 3), c["review"]) for c in p["cues"]], "png": png.name})
         print(f"{p['title'][:40]}: " + ", ".join(f"{k} {v['status']}" for k, v in verdicts.items()), flush=True)
     (out / "crosscheck.json").write_text(json.dumps(report, indent=1, default=str), encoding="utf-8")

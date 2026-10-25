@@ -1,102 +1,109 @@
-# Analysis cross-check: the seven re-analysed tracks
+# Analysis cross-check: seven tracks, with Gemini
 
-OnSet's analysis of each track is checked against independent sources, item by item. Items
-where the sources agree are settled; where they disagree and the evidence is strong, the check
-decides and says why; only what stays genuinely open goes to the DJ, as yes/no questions.
-Nothing here approves a cue or writes to rekordbox.
+The seven authorized Gemini audio reads are complete. Their answers **do not settle
+most drop positions**. No cue, grid, key, tempo, approval or rekordbox record was
+changed. Agreement below describes estimates, not verified musical accuracy.
 
-**Status:** first pass without Gemini. Gemini's listening is the tie-breaker for the main-drop
-splits below; it runs once the DJ confirms uploading these seven tracks' audio.
+The DJ chose the **main payoff drop** as the future D target, keeping first full
+groove separate. That change is still unimplemented. Existing D cues retain their
+old first-groove meaning; do not simply relabel or approve them as main drops.
 
-Tool: [service/tools/crosscheck.py](../service/tools/crosscheck.py), which reads the workspace
-read-only and runs on any set of tracks (`--titles …`) or the whole library (`--all`). Evidence
-images and the full JSON stay out of git in `.test-desktop/crosscheck/`.
+## Evidence and reproducibility
 
-## Sources
+- Tool: [crosscheck.py](../service/tools/crosscheck.py). It opens the workspace
+  read-only and retains all source estimates. It does not start the service.
+- Original measurements and images: `.test-desktop/crosscheck/`, excluded from git.
+- Completed Gemini answers, revised JSON comparison and replay script:
+  `service/.artifacts/claude-takeover-20261025/`, excluded from git.
+- This comparison **reused the earlier spectral and allin1 beat measurements**
+  after checking all seven current track revisions exactly against the original
+  report. Audio was not decoded again. The original PNGs do not include Gemini.
+- Gemini listened to the seven audio proxies in the previously approved worker.
+  Codex let that worker finish and did not submit duplicate uploads. Its raw
+  answers, including confidence claims and notes, remain in the private evidence.
+  Those confidence claims are not calibrated probabilities.
+- Regression verification: `service/.venv/Scripts/python.exe -m pytest service/tests/test_crosscheck.py -q`
+  — **8 passed**. These validate evidence handling, not musical labels.
 
-| Source | What it gives | Independent of OnSet? |
+## Main-drop disagreements
+
+Times below follow each source's event on the stored grid, except Gemini's column,
+which gives its raw audio timestamp. Stored D is shown for comparison, not as a
+main-drop estimate. All these cues are proposed or stale, not newly approved.
+
+| Track | Stored D | rekordbox first Chorus | Spectral candidate | allin1 first chorus | Gemini main drop |
+|---|---|---|---|---|---|
+| La Danza | 0:03.9 (stale) | 0:45.8 | 1:04.8 | 0:34.4 | 1:16 |
+| Lock In | 0:43.0 | 0:43.0 | 0:13.2 | 1:07.9 | 0:27 |
+| Joya (Radio Edit) | 0:03.6 | 0:07.1 | 2:08.0 | 1:04.0 | 1:25 |
+| Follow | 0:34.1 | 1:04.4 | 0:34.1 | 2:03.0 | 1:15 |
+| Safe And Sound | 1:04.1 | 0:38.5 | 1:04.1 | 1:42.5 | 0:45 |
+| Beautiful Places | 0:50.1 | 0:50.1 | 0:50.1 | 0:18.7 | 0:44 |
+| Ray Of Solar | 1:25.7 | 1:25.7 | 1:25.7 | 0:28.8 | 0:57 |
+
+La Danza, Lock In, Joya and Follow have four distinct main-drop estimates outside
+the two-bar tolerance. On Safe And Sound, rekordbox and Gemini are within two
+**stored** bars, but the grid is at half the independently estimated tempo; two
+stored bars cover about 6.4 seconds. On Beautiful Places and Ray Of Solar,
+rekordbox and the spectral candidate agree while both other sources disagree.
+None of these source counts alone closes the semantic acceptance gate.
+
+The first Chorus, first sustained low-band return and main musical payoff are
+different definitions. The spectral method measures energy below 120 Hz; it does
+not separate a kick from a bassline or establish which return is the main payoff.
+The first non-intro allin1 label is also only a proxy for full groove.
+
+## Other findings
+
+| Item | Evidence | Status |
 |---|---|---|
-| OnSet | its stored sections, cues, BPM, key | — |
-| rekordbox | its own phrase analysis (Intro, Verse, Chorus, Outro…), grid, BPM, key | yes; OnSet takes its grid from rekordbox |
-| Essentia | key, by three profiles (majority used) | yes |
-| allin1 | structure segments, and a beat/downbeat model run whole (not chunked) | yes |
-| Spectral | measured from the audio: bass presence per bar (below 120 Hz), and where the kick (30–90 Hz) and hats (6–11 kHz) fall within the grid's beat | yes |
-| Gemini | listening to the audio: drop, breakdown, outro, BPM | pending |
+| Safe And Sound tempo | stored/rekordbox 75; allin1 149.88; Gemini 150 | candidate 150, half/double-time ambiguity retained; no grid or tempo edit |
+| Follow key | OnSet 2B; rekordbox and Essentia 10A | candidate 10A, no edit |
+| Lock In key | OnSet 6A; rekordbox and Essentia 5A | candidate 5A, no edit |
+| Safe And Sound key | OnSet 9A; rekordbox 8A; Essentia 8B | unresolved |
+| Ray Of Solar grid | kick +0.44 beat; allin1 +0.42 beat | needs inspection against actual waveform |
+| Beautiful Places grid | kick −0.38 beat; allin1 −0.49 beat | needs inspection against actual waveform |
 
-## Items and tolerances
+All other tempo estimates agree within 1%; Gemini's 144 BPM estimate for Lock In
+falls within 1% of 145. Keys agree across the three reported sources on La Danza,
+Joya, Beautiful Places and Ray Of Solar. These are source agreements, not new
+verified labels. OnSet uses rekordbox's grid, so their grid votes are not
+independent; estimates derived from the same audio features may share errors.
 
-| Item | Agree when | Notes |
-|---|---|---|
-| Tempo | within 1% | half or double time within 2%; allin1's beat model (averaged over many beats) is the independent count |
-| Grid | the kick lands within 12% of a beat of the grid's beats, and allin1's downbeats are on beat 1 | a quarter beat when allin1 is exactly on the grid and the track has no steady four-to-the-floor kick |
-| Key | two sources name the same Camelot key | |
-| First full groove | within 2 bars | what OnSet's **D** cue marks: the first 8 bars in a row with the bass in |
-| Main drop | within 2 bars | rekordbox's first Chorus; spectrally, the bass returning after a 4+ bar gap (or the groove itself after an intro without bass) |
-| Breakdown | within 2 bars | the first 4+ bars without bass after the main drop |
-| Outro | within 4 bars | where an outro starts is a matter of degree |
+The stricter event comparison leaves **Joya's outro, Follow's outro, Beautiful
+Places' breakdown and Lock In's breakdown unresolved** where the earlier report
+had accepted one cluster or bridged several estimates. Lock In's outro has a
+three-source candidate at stored bar 121 (3:21.9), versus OnSet bar 129; Gemini's
+outro is elsewhere. La Danza's breakdown/outro and Joya's breakdown remain open.
+Full individual estimates and reasons are in the private JSON.
 
-**Decision rule.** An item is *agreed* when at least two sources, one of them not OnSet, fall
-within the tolerance and OnSet is among them; *decided* when they agree and OnSet doesn't (the
-agreed value is the answer); also *decided* when only two sources disagree and the audio shows
-a step of 9 dB or more at one of them. Three or more sources that all disagree stay *open*.
-*Confirm* means two independent sources contradict rekordbox, which needs a look before anyone
-acts on it.
+## Comparison rules and limits
 
-## Results
+Event clusters must fit entirely within two bars (four for outros). Equal-sized
+competing clusters remain ambiguous, including overlapping clusters with different
+endpoints. A large bass-energy step cannot settle a split vote by itself.
+Corrections against a stored value are **candidates**. An `agree` status means one
+cluster has more support; it does not mean unanimity, validated correctness or
+permission to change the library. Raw estimates remain visible alongside it.
 
-| Track | Tempo | Grid | Key | First groove (D) | Main drop | Breakdown | Outro |
-|---|---|---|---|---|---|---|---|
-| La Danza | ✓ 126.27 | ✓ | ✓ 12A | ✓ bar 2, 0:03.9 | **open**: 18 / 24 / 34 | **open** | **open** |
-| Lock In | ✓ 145 | ✓ | **5A** (OnSet 6A) | **open** | **open** | **bar 69** (OnSet 41) | **bar 123** (OnSet 129) |
-| Joya (Radio Edit) | ✓ 135 | ✓ | ✓ 4B | ✓ bar 4, 0:07.1 | **open**: 4 / 36 / 72 | **open** | ✓ bar 135 |
-| Follow | ✓ 127 | ✓ | **10A** (OnSet 2B) | ✓ bar 18 | **open**: 18 / 34 / 65 | ✓ bar 26 | **bar 110** (OnSet 117) |
-| Safe And Sound | **150** (grid 75) | ✓ | **open**: 9A / 8A / 8B | ✓ bar 20 | **open**: 12 / 20 / 32 | ✓ bar 28 | spectral only, bar 53 |
-| Beautiful Places | ✓ 130 | **confirm** | ✓ 9A | ✓ bar 27 | ✓ bar 27 | ✓ bar 61 | ✓ bar 93 |
-| Ray Of Solar | ✓ 135 | **confirm** | ✓ 11A | ✓ bar 48 | ✓ bar 48 | ✓ bar 64 | ✓ bar 131 |
+Exact submitted audio paths take priority over title matching; ambiguous title
+matches are ignored. Malformed timestamps and timestamps outside the track are
+not snapped to its final bar. Independent tempo disagreements are retained.
+Essentia contributes a key only when its available profiles have a strict
+majority; a three-way split does not produce an arbitrary winner.
 
-✓ OnSet agrees with independent sources. **Bold values** are decided against OnSet.
+Internal bar numbers are zero-based and refer to the current stored grid. Gemini's
+written bar-number descriptions are not used; its seconds are mapped to that grid.
+Original per-source timestamps and semantic interpretations remain distinguishable.
 
-## What was decided, and why
+## Remaining user checks
 
-- **Safe And Sound is 150 BPM, not 75.** allin1's beat model counts 149.88 BPM against the
-  grid's 75, and rekordbox's grid is itself the source of the 75. The grid is half time: its
-  bars are two real bars long. OnSet's cues on it are still on real beats, but any BPM display,
-  tempo matching or transition maths should use 150.
-- **La Danza's D cue at 0:03.9 is right for what D marks.** OnSet and the spectral measurement
-  both find the bass in from bar 2, and rekordbox calls that phrase a "Bridge". What is open is
-  whether the cue labelled *drop* should mark this first groove or the main drop later on
-  (rekordbox's Chorus at 0:45.8, or the bass returning at 1:04.8 after a short gap).
-- **Keys:** Follow is 10A (rekordbox and Essentia; OnSet said 2B) and Lock In is 5A (rekordbox
-  and Essentia; OnSet said 6A). OnSet's own key estimate is the outlier on both.
-- **Lock In's breakdown is bar 69 (1:55.9)** and its **outro bar 123**: rekordbox and allin1
-  agree on both; OnSet said bars 41 and 129. **Follow's outro is bar 110 (3:28.0)**: rekordbox,
-  allin1 and the spectral measure within 4 bars; OnSet said 117.
+For **Ray Of Solar**, inspect the waveform around 1:25 in rekordbox; for **Beautiful
+Places**, around 0:50. Determine whether beat lines sit on the kick peaks or
+halfway between them. These two checks can confirm or reject the suspected
+half-beat offset; do not move either grid automatically.
 
-## Needs a look: two grids may be half a beat off
-
-On **Ray Of Solar** and **Beautiful Places** the kick lands about halfway between the grid's
-beats (+0.44 and −0.38 of a beat) and the hats land on them, the reverse of the usual house
-pattern; allin1's downbeats are offset by the same half beat (+0.42 and −0.49). On the other
-five tracks the kick lands on the grid's beats. Two independent sources agree, but they
-contradict rekordbox, and every OnSet cue on these two tracks follows that grid, so it is a
-question rather than a decision (see below).
-
-## Still open
-
-- **Main drop** on La Danza, Joya, Follow, Safe And Sound and Lock In: three sources, three
-  answers. Gemini's listening is the planned tie-breaker.
-- **Breakdown** on La Danza and Joya, **outro** on La Danza, **first groove** on Lock In, and
-  **Safe And Sound's key** (9A, 8A and 8B: Essentia hears the relative major of rekordbox's 8A).
-
-## Questions for the DJ (no musical training needed)
-
-Only the grid question is ready; the drop questions wait for Gemini, which may settle them.
-
-1. **Ray Of Solar.** In rekordbox, load it, zoom the waveform in around 1:25 and look at the
-   beat-grid lines. Do the lines sit on the tall low (kick) peaks of the waveform? *yes / no /
-   they sit halfway between them*
-2. **Beautiful Places.** The same, around 0:50.
-
-If both lines sit on the kicks, rekordbox's grids stand and the check's half-beat reading is
-the error. If they sit halfway between, the grid needs moving by half a beat in rekordbox before
-any cue on those tracks is trusted.
+The automated pass is complete, but it has not supplied verified main-drop labels.
+The next implementation must separate main-payoff candidates from first-groove
+evidence and preserve uncertainty, human corrections and explicit approvals. It
+must show the proposed effects before changing existing real-library cues.

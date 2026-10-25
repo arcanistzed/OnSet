@@ -2,6 +2,11 @@
 
 > **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
 
+Latest takeover: [2026-10-25 Claude-session continuation](CONTINUATION_2026-10-25.md)
+records the recovered user decisions, committed candidate `1952716`, current
+packaging and cross-check work, and remaining acceptance gates. Read it before
+using older installed-build or listening-review instructions below.
+
 Latest continuation: [2026-10-24 installer and deep-analysis follow-up](CONTINUATION_2026-10-24.md). This records the recovered Claude work queue and freshly scoped checks; older build identities below remain historical evidence.
 
 Last updated 2026-10-24. Repository: `C:\Users\water\Projects\OnSet`. This is the **current handoff** for an agent continuing the preparation side of OnSet. The old September handoff stays in the private repository it came from. Do not treat its Linux environment, download instructions or old cue reports as current operating state.
