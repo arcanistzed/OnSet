@@ -30,6 +30,12 @@ class Cancelled(Exception):
 # every stage, and the longest stage (a cold import of the audio tools, or decoding a track)
 # takes well under a minute.
 STALL_S = 300
+# A checkpoint is saved and sent to the screens when its stage changes, at most once a second
+# while only its fraction moves, and every HEARTBEAT_S while nothing changes (the deep worker's
+# loop checkpoints twice a second for minutes on one model), which keeps a live job well inside
+# STALL_S. Cancellation and pause are still checked on every checkpoint.
+PROGRESS_S = 1.
+HEARTBEAT_S = 30.
 STALL_LOG = "service-stalls.log"
 
 
@@ -52,6 +58,14 @@ def mark_chunk_joins(segments, joins, margin=15.):
     return [{**s, "label_reliable": False}
             if any(s["start"] <= j + margin and s["end"] >= j - margin for j in joins) else s
             for s in segments]
+
+
+def progress_due(last, stage, progress, now):
+    """Whether a checkpoint at `now` is saved, given the last saved (stage, progress, time)."""
+    if last is None or stage != last[0]:
+        return True
+    elapsed = now - last[2]
+    return elapsed >= HEARTBEAT_S or progress != last[1] and elapsed >= PROGRESS_S
 
 
 def stalled_jobs(jobs, now, limit=STALL_S):
@@ -389,15 +403,20 @@ class Service:
             if not control["pause"].is_set() and record["state"] in {"running", "queued"}:
                 record["state"] = "paused"
             self.store.job(record)
+        saved = [None]
         def checkpoint(stage, progress):
             if control["cancel"].is_set():
                 raise Cancelled()
+            resumed = not control["pause"].is_set()
             while not control["pause"].wait(.2):
                 if control["cancel"].is_set():
                     raise Cancelled()
             record.update(state="running", stage=stage, progress=progress)
-            self.store.job(record)
-            self.notify({"method": "job-progress", "params": record.copy()})
+            now = time.monotonic()
+            if resumed or progress_due(saved[0], stage, progress, now):
+                saved[0] = (stage, progress, now)
+                self.store.job(record)
+                self.notify({"method": "job-progress", "params": record.copy()})
         try:
             control["started"] = True
             self.imports_ready.wait()
