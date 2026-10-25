@@ -25,6 +25,7 @@ import {ShowSettings} from './ShowSettings';
 import {GenreEvidence} from './GenreEvidence';
 import {RekordboxLink} from './RekordboxLink';
 import {RekordboxHistory} from './RekordboxHistory';
+import {GigReadiness} from './GigReadiness';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
 import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT,reviewQueue,queueStep,writableTracks} from './library';
@@ -123,7 +124,7 @@ function App(){
   const [position,setPosition]=useState(0),[source,setSource]=useState(''),[snap,setSnap]=useState(true),[click,setClick]=useState(false),[playing,setPlaying]=useState(false);
   const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null);
   const [brief,setBrief]=useState<any>(()=>restoreBrief(null)),briefLoaded=useRef(false);
-  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null),[libraryWrite,setLibraryWrite]=useState<{preview:any}|null>(null);
+  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null),[libraryWrite,setLibraryWrite]=useState<{preview:any}|null>(null),[gig,setGig]=useState(false);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
   const [priority,setPriority]=useState<Record<string,any>>({}),[planJob,setPlanJob]=useState<string|null>(null),planJobRef=useRef<string|null>(null);
   const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null),queueNav=useRef<{prev:string|null;next:string|null}>({prev:null,next:null}),lastQueue=useRef<string[]>([]);
@@ -252,8 +253,10 @@ function App(){
           {marked.length>0&&<Button kind="ghost" size="sm" onClick={()=>setMarked([])}>Clear</Button>}
           <Button size="sm" disabled={busy||!ids.length} onClick={()=>startAnalysis(false)}>Light analysis</Button>
           <Button size="sm" kind="primary" icon="spark" disabled={busy||!ids.length} onClick={()=>startAnalysis(true)}>Deep analysis</Button>
-          <Button size="sm" disabled={busy||!writable.ids.length} title={writable.ids.length?undefined:'No approved cues in these tracks'} onClick={()=>{setAskAnalysis(null);setLibraryWrite(w=>w?null:{preview:null});}}>Write cues to rekordbox</Button>
+          <Button size="sm" disabled={busy||!writable.ids.length} title={writable.ids.length?undefined:'No approved cues in these tracks'} onClick={()=>{setAskAnalysis(null);setGig(false);setLibraryWrite(w=>w?null:{preview:null});}}>Write cues to rekordbox</Button>
+          <Button size="sm" kind={gig?'':'ghost'} icon="check" onClick={()=>{setAskAnalysis(null);setLibraryWrite(null);setGig(g=>!g);}}>Gig check</Button>
         </div>}
+        {gig&&<GigReadiness marked={marked} playlists={playlistNames} run={run} onOpen={openTrack} onClose={()=>setGig(false)}/>}
         {libraryWrite&&<div className="write-preview" role="dialog" aria-label="Write approved cues to rekordbox">
           <h4>Write approved cues for {writable.ids.length} track{writable.ids.length===1?'':'s'}</h4>
           <p className="muted">{writable.cues} approved decision{writable.cues===1?'':'s'} from the {marked.length?'checked':'visible'} tracks; tracks without approved cues are left out. Only approved cues are written, after you check the exact changes. Close rekordbox first; one backup is saved for the whole write.</p>
