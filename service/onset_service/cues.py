@@ -237,8 +237,12 @@ def find_sections(E, E_hi=None, drop_min_jump=None, drop_rel=None, break_min=Non
     return {"drop": drop, "breakdown": breakdown, "outro": outro, "second_drop": second, "flags": flags}
 
 
-def derive_cues(sections, downbeats, second_drop=False, end_loop_bars=0, duration=None, intro_loop_bars=0):
-    """Map detected sections to cues: [(letter, name, start_s, end_s_or_None), ...]."""
+def derive_cues(sections, downbeats, second_drop=False, end_loop_bars=0, duration=None, intro_loop_bars=0,
+                bars_before=None):
+    """Map detected sections to cues: [(letter, name, start_s, end_s_or_None), ...].
+    `bars_before` sets how many bars before the first drop B and C sit (the DJ's cue template);
+    the default is the original scheme, B 32 and C 16."""
+    before = {"B": 32, "C": 16, **(bars_before or {})}
     downbeats = np.asarray(downbeats, dtype=float)
     n = len(downbeats)
     if n == 0 or not np.all(np.isfinite(downbeats)) or np.any(np.diff(downbeats) <= 0):
@@ -260,10 +264,9 @@ def derive_cues(sections, downbeats, second_drop=False, end_loop_bars=0, duratio
         if duration is None or t(intro_loop_bars) <= duration:
             cues.append(("I", CUE_SCHEME["I"][0], t(0), t(intro_loop_bars)))
     if d is not None:
-        if d - 32 >= 0:
-            cues.append(cue("B", d - 32))
-        if d - 16 >= 0:
-            cues.append(cue("C", d - 16))
+        for letter in ("B", "C"):
+            if d - before[letter] >= 0:
+                cues.append(cue(letter, d - before[letter]))
         cues.append(cue("D", d))
     if sections.get("breakdown") is not None:
         cues.append(cue("E", sections["breakdown"]))

@@ -246,6 +246,8 @@ class Service:
             "replan": lambda: self.replan(p),
             "review-queue": lambda: self.review_queue(p),
             "gig-readiness": lambda: self.gig_readiness(p),
+            "cue-template": lambda: self.cue_template(p),
+            "apply-cue-template": lambda: self.apply_cue_template(p),
             "genre-suggestions": lambda: self.genre_suggestions(p),
             "import-workspace": lambda: self.import_workspace(p),
             "relocate-cache": lambda: self.relocate_cache(p),
@@ -294,6 +296,19 @@ class Service:
             except (ValueError,KeyError) as error:
                 plan.update(stale=True,validation_error=str(error))
         return values
+
+    def cue_template(self, p):
+        """The DJ's cue template; with `template`, validates and saves it first."""
+        from .cue_template import SETTING, load, validate
+        if p.get("template") is not None:
+            self.store.setting(SETTING, value=validate(p["template"]))
+        return load(self.store)
+
+    def apply_cue_template(self, p):
+        """Re-places open cue proposals under the saved template; decided cues are left alone."""
+        from .cue_template import load, reapply
+        ids = p.get("track_ids") or [t["id"] for t in self.store.tracks()]
+        return reapply(self.store, ids, load(self.store))
 
     def settings(self, p):
         allowed = {"cache_dir", "model_dir", "light_jobs", "heavy_jobs", "wsl_distro", "rekordbox_db", "experimental_models", "set_brief"}
@@ -433,6 +448,9 @@ class Service:
                         result = analyse(self.store.get(tid), self.store.home, record["params"].get("deep", True),
                                          lambda s, v: checkpoint(s, (index + v) / max(1, len(ids))), record["params"].get("experimental", []),
                                          {k:self.store.setting(k) for k in ("cache_dir", "model_dir")})
+                        # The DJ's cue template decides which roles are proposed and where B and C sit.
+                        from .cue_template import load as load_template, place
+                        result["cues"] = place(result, load_template(self.store))
                         self.store.apply_analysis(tid, result)
                         if result.get("state") != "complete":
                             partial.append(tid)

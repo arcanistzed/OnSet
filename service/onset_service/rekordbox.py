@@ -93,6 +93,8 @@ def prepare(store, track_ids, path=None, plain=False, hot=False, comments=False)
     db = open_db(path, plain)
     try:
         supported(db)
+        from .cue_template import load as load_template, write_kind
+        template = load_template(store)
         changes, conflicts = [], []
         for track_id in track_ids:
             p = store.get(track_id)
@@ -117,9 +119,11 @@ def prepare(store, track_ids, path=None, plain=False, hot=False, comments=False)
             operations, slots = [], set()
             for proposal in approved:
                 role = proposal["role"]
-                if hot and role not in HOT_SLOT:
+                # The DJ's cue template says whether a role is written as a memory cue, a hot cue and
+                # on which pad; roles it leaves out of this kind are not written.
+                kind = write_kind(template, role, hot, proposal.get("end") is not None)
+                if kind is None:
                     continue
-                kind = HOT_SLOT[role] if hot else (4 if proposal.get("end") is not None else 0)
                 # A hot rewrite replaces the cue on the target pad and OnSet's own cue of that name on
                 # any other pad, so cues from the old off-by-one slot numbering move instead of doubling.
                 old = [c for c in existing if is_hot_cue(c) == hot and
