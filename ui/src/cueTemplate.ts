@@ -1,6 +1,6 @@
 // The DJ's cue template as the service stores it (service/onset_service/cue_template.py).
 export type RoleSettings={enabled:boolean;memory:boolean;hot:boolean;pad:string|null};
-export type CueTemplate={schema_version:number;bars_before_drop:{B:number;C:number};roles:Record<string,RoleSettings>};
+export type CueTemplate={schema_version:number;drop_anchor?:'main_payoff'|'first_full_groove';bars_before_drop:{B:number;C:number};roles:Record<string,RoleSettings>};
 
 export const PADS=['A','B','C','D','E','F','G','H'];
 export const ROLE_ORDER=['A','B','C','D','E','F','G','L','I'];

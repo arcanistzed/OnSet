@@ -9,7 +9,7 @@ using older installed-build or listening-review instructions below.
 
 Latest continuation: [2026-10-24 installer and deep-analysis follow-up](CONTINUATION_2026-10-24.md). This records the recovered Claude work queue and freshly scoped checks; older build identities below remain historical evidence.
 
-Last updated 2026-10-24. Repository: `C:\Users\water\Projects\OnSet`. This is the **current handoff** for an agent continuing the preparation side of OnSet. The old September handoff stays in the private repository it came from. Do not treat its Linux environment, download instructions or old cue reports as current operating state.
+Last updated 2026-10-25. Repository: `C:\Users\water\Projects\OnSet`. This is the **current handoff** for an agent continuing the preparation side of OnSet. The old September handoff stays in the private repository it came from. Do not treat its Linux environment, download instructions or old cue reports as current operating state.
 
 ## Read first
 
@@ -23,7 +23,7 @@ The user wants implementation and verification continued until the intended scop
 
 ## Last installed build and recorded evidence
 
-The preparation screens run inside OnSet's Tauri desktop app (`crates/onset-desktop`), with a per-user NSIS installer. The last installed candidate is `abec26f` (2026-10-24); `3630ea4`, which adds the cue-audition seek fix, was packaged on 2026-10-24 but not installed; [continuation evidence](CONTINUATION_2026-10-24.md) records its installer hashes, installed-payload checks and unchanged native workspace exports. The dated records below include the former standalone Electron build (then named Autocue); its acceptance does not carry over to Tauri.
+The preparation screens run inside OnSet's Tauri desktop app (`crates/onset-desktop`), with a per-user NSIS installer. The installed executable was verified as `3630ea4` on 2026-10-25; the [latest takeover record](CONTINUATION_2026-10-25.md) tracks `1952716` packaging. For the earlier `abec26f` (2026-10-24) candidate, [continuation evidence](CONTINUATION_2026-10-24.md) records its installer hashes, installed-payload checks and unchanged native workspace exports. The dated records below include the former standalone Electron build (then named Autocue); its acceptance does not carry over to Tauri.
 
 | Item | State as of 2026-10-19 |
 |---|---|

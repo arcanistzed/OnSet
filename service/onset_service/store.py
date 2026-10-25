@@ -232,6 +232,7 @@ class Store:
 
     def apply_analysis(self, track_id, analysis, source="native-v1"):
         p = self.get(track_id)
+        previous_cues = p.get("cues", [])
         from .metrics import semantic_observation
         revision = digest({"audio": p["fingerprint"], "analysis": semantic_observation(analysis), "source": source})
         if revision == p.get("revision"):
@@ -253,13 +254,38 @@ class Store:
                        "time": c[2], "end": c[3] if len(c) > 3 else None, "review": "proposed",
                        "revision": revision, "confidence": "unverified", "source": source}
                       for c in analysis.get("cues", [])]
+        for cue in p["cues"]:
+            if cue["role"] in {"B", "C", "D"}:
+                cue["anchor"] = analysis.get("cue_anchor", "first_full_groove")
+                prior = next((old for old in previous_cues if old["role"] == cue["role"]), None)
+                if (prior and (prior.get("retained_decision") or
+                        prior.get("anchor", "first_full_groove") != cue["anchor"] and
+                        (prior.get("manual") or prior.get("review") in {"approved", "rejected", "delete-approved"}))):
+                    # Reanalysis must not bypass the template preview's protection
+                    # by replacing a reviewed groove cue with a different event.
+                    cue.update({**prior, "id": cue["id"], "revision": revision,
+                                "anchor": prior.get("anchor", "first_full_groove"),
+                                "retained_decision": prior.get("retained_decision") or prior["review"],
+                                "review": "rejected" if prior["review"] == "rejected" else "stale"})
+        # An unresolved new anchor may omit D/B/C entirely. Do not lose the DJ's
+        # prior decision or position just because the template generated no role.
+        present = {c["role"] for c in p["cues"]}
+        for cue in previous_cues:
+            if cue["role"] not in present and (cue.get("manual") or cue.get("retained_decision") or cue.get("review") in {"approved", "rejected", "delete-approved"}):
+                p["cues"].append({**cue, "id": digest([track_id, revision, cue["role"]])[:24],
+                                  "retained_decision": cue.get("retained_decision") or cue["review"],
+                                  "revision": revision, "review": "rejected" if cue["review"] == "rejected" else "stale"})
         for key, value in p.get("overrides", {}).items():
             if key not in {"grid", "sections", "cue_positions"}:
                 p[key] = value
         for c in p["cues"]:
             saved = p.get("overrides", {}).get("cue_positions", {}).get(c["role"])
             if saved and 0 <= saved["time"] < p["duration"]:
-                c.update(time=saved["time"], end=saved.get("end"), manual=True, review="stale")
+                prior = next((old for old in previous_cues if old["role"] == c["role"]), None)
+                c.update(time=saved["time"], end=saved.get("end"), manual=True,
+                         review="rejected" if prior and prior.get("review") == "rejected" else "stale")
+                if prior and c["role"] in {"B", "C", "D"}:
+                    c.update(anchor=prior.get("anchor", "first_full_groove"), name=prior["name"])
         with self.lock:
             self.db.execute("INSERT OR IGNORE INTO revisions VALUES(?,?,?)", (revision, track_id, canonical(p)))
             self._commit()
@@ -267,11 +293,27 @@ class Store:
         return p
 
     def edit(self, track_id, changes):
+        with self.lock:
+            return self._edit(track_id, changes)
+
+    def _edit(self, track_id, changes):
         p = self.get(track_id)
         before = copy.deepcopy(p)
-        allowed = {"title", "artist", "version", "notes", "key", "bpm", "genres", "energy", "sections", "grid", "themes", "hooks", "song_group", "mood_tags", "familiarity", "accept_rekordbox_grid_conflict"}
+        allowed = {"title", "artist", "version", "notes", "key", "bpm", "genres", "energy", "sections", "grid", "themes", "hooks", "song_group", "mood_tags", "familiarity", "accept_rekordbox_grid_conflict", "main_payoff"}
         if set(changes) - allowed:
             raise ValueError("Unsupported track edit")
+        if "main_payoff" in changes:
+            import math
+            event = changes["main_payoff"]
+            if not isinstance(event, dict) or event.get("state") not in {"present", "absent", "unknown"}:
+                raise ValueError("Main payoff needs present, absent or unknown state")
+            time = event.get("time")
+            if event["state"] == "present" and (not isinstance(time, (int, float)) or isinstance(time, bool)
+                    or not math.isfinite(time) or not 0 <= time < p["duration"]):
+                raise ValueError("Main payoff time must be within the audio")
+            changes = {**changes, "main_payoff": {"kind": "main_payoff", "state": event["state"],
+                "time": time if event["state"] == "present" else None, "selected": event["state"] != "unknown",
+                "source": "user-selection", "confidence": "unverified"}}
         if "bpm" in changes and not 20 <= float(changes["bpm"]) <= 400:
             raise ValueError("BPM must be between 20 and 400")
         if "energy" in changes and not 1 <= float(changes["energy"]) <= 10:
@@ -312,6 +354,10 @@ class Store:
         return p
 
     def review_cue(self, track_id, cue_id, status, position=None, end=None):
+        with self.lock:
+            return self._review_cue(track_id, cue_id, status, position, end)
+
+    def _review_cue(self, track_id, cue_id, status, position=None, end=None):
         if status not in {"approved", "rejected", "proposed", "delete-approved"}:
             raise ValueError("Invalid review status")
         p = self.get(track_id)
@@ -331,6 +377,7 @@ class Store:
         if cue.get("end") is not None and cue["end"] <= cue["time"]:
             raise ValueError("Loop end must follow cue")
         cue["review"] = status
+        cue.pop("retained_decision", None)
         cue["manual"] = position is not None or end is not None or cue.get("manual", False)
         if cue["manual"]:
             p["overrides"].setdefault("cue_positions", {})[cue["role"]] = {"time": cue["time"], "end": cue["end"]}
@@ -340,6 +387,10 @@ class Store:
         return p
 
     def review_bulk(self, track_id, cue_ids, status, revision=None):
+        with self.lock:
+            return self._review_bulk(track_id, cue_ids, status, revision)
+
+    def _review_bulk(self, track_id, cue_ids, status, revision=None):
         if status not in {"approved", "rejected", "proposed"}:
             raise ValueError("Bulk decisions support approve, reject or reset")
         p = self.get(track_id)
@@ -349,7 +400,9 @@ class Store:
             raise ValueError("Select valid cues before applying a group decision")
         before = copy.deepcopy(p)
         for cue in p["cues"]:
-            if cue["id"] in cue_ids: cue["review"] = status
+            if cue["id"] in cue_ids:
+                cue["review"] = status
+                cue.pop("retained_decision", None)
         p["review_state"] = "reviewed" if all(c["review"] in {"approved", "rejected", "delete-approved"} for c in p["cues"]) else "reviewing"
         p["write_state"] = "unwritten"
         self.record_edit(before, p)
@@ -373,9 +426,9 @@ class Store:
                 raise ValueError("Cannot undo across an analysis revision")
             self.db.execute("UPDATE edits SET undone=1 WHERE id=?", (row[0],))
             self._commit()
-        self.invalidate(track_id)
-        self.save(restored)
-        return restored
+            self.invalidate(track_id)
+            self.save(restored)
+            return restored
 
     def artifact(self, kind, artifact_id, record=None):
         with self.lock:

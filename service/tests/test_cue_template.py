@@ -1,7 +1,7 @@
 """The DJ's cue template: defaults, validation, placement, re-placement and the write slots."""
 import pytest
 
-from onset_service.cue_template import PAD_KIND, default, place, reapply, validate, write_kind
+from onset_service.cue_template import PAD_KIND, default, place, preview, reapply, validate, write_kind
 from onset_service.cues import HOT_SLOT, derive_cues
 
 BAR = 2.0                                   # 120 BPM: one bar every 2 s
@@ -112,3 +112,179 @@ def test_reapply_places_new_and_moved_proposals():
 def test_reapply_skips_tracks_without_cues():
     store = Store({"t": {"id": "t", "revision": "r1", "analysis": {"cues": []}, "cues": []}})
     assert reapply(store, ["t"], validate({}))["tracks"] == 0
+
+
+def test_legacy_template_keeps_groove_and_main_payoff_is_explicit():
+    assert validate({"schema_version": 1})["drop_anchor"] == "first_full_groove"
+    with pytest.raises(ValueError, match="main payoff"):
+        validate({"drop_anchor": "largest_energy_jump"})
+    template = validate({"drop_anchor": "main_payoff"})
+    # Legacy drop and arbitrary strongest boundaries cannot silently become a payoff.
+    result = analysis()
+    result["events"] = [{"kind": "major_payoff_candidate", "time": 120, "source": "multifeature-v1"}]
+    assert not {"B", "C", "D"} & times(place(result, template)).keys()
+    assert result["sections"]["drop"] == 40
+
+
+def test_selected_payoff_moves_only_bcd_and_keeps_original_timing():
+    from onset_service.payoff import anchor_event
+    result = analysis()
+    result["events"] = [{"kind": "main_payoff", "time": 120.6, "state": "estimated",
+                         "selected": True, "source": "user-selection"}]
+    template = validate({"drop_anchor": "main_payoff"})
+    placed = times(place(result, template))
+    assert (placed["B"], placed["C"], placed["D"]) == (56, 88, 120)
+    assert {r: t for r, t in placed.items() if r not in "BCD"} == {
+        r: t for r, t in times(analysis()["cues"]).items() if r not in "BCD"}
+    event = anchor_event(result, "main_payoff")
+    assert event["original_time"] == 120.6 and event["aligned_time"] == 120
+    assert event["confidence"] == "unverified"
+
+
+@pytest.mark.parametrize("time", [-1, 240, float("nan"), True])
+def test_invalid_payoff_cannot_be_clamped_to_grid(time):
+    event = {"kind": "main_payoff", "time": time, "state": "present", "selected": True, "source": "user-selection"}
+    assert "D" not in times(place(analysis(), validate({"drop_anchor": "main_payoff"}), event))
+
+
+def test_unknown_absent_and_multiple_selected_payoffs_stay_distinct():
+    from onset_service.payoff import anchor_event
+    result = analysis()
+    assert anchor_event(result, "main_payoff")["state"] == "unknown"
+    result["events"] = [{"kind": "main_payoff", "state": "absent", "selected": True}]
+    assert anchor_event(result, "main_payoff")["state"] == "absent"
+    result["events"].append({"kind": "main_payoff", "state": "present", "time": 120, "selected": True})
+    assert anchor_event(result, "main_payoff")["state"] == "ambiguous"
+
+
+def test_malformed_imported_event_elements_do_not_break_preview():
+    store = Store({"t": profile({})})
+    store.profiles["t"]["analysis"]["events"] = [None, "bad", 42]
+    assert preview(store, ["t"], default())["details"][0]["main_payoff"]["state"] == "unknown"
+    event = {"kind": "main_payoff", "state": "present", "time": 80, "selected": True, "source": "user-selection"}
+    assert times(place(store.profiles["t"]["analysis"], validate({"drop_anchor": "main_payoff"}), event))["D"] == 80
+
+
+def test_preview_is_read_only_preserves_decisions_and_refuses_stale_apply():
+    import copy
+    store = Store({"t": profile({"D": "approved", "B": "rejected", "F": "delete-approved"}, manual={"C"})})
+    before = copy.deepcopy(store.profiles)
+    template = validate({"drop_anchor": "main_payoff"})
+    report = preview(store, ["t"], template)
+    assert store.profiles == before
+    assert report["details"][0]["main_payoff"]["state"] == "unknown"
+    kept = {c["role"]: c for c in report["details"][0]["changes"] if c["action"] == "keep"}
+    assert kept["D"]["anchor"] == "first_full_groove"
+    reapply(store, ["t"], template, report["id"])
+    assert store.profiles == before
+    # Even an approval, evidence selection or template change after preview invalidates it.
+    store.profiles["t"]["cues"][0]["review"] = "approved"
+    changed = copy.deepcopy(store.profiles)
+    with pytest.raises(ValueError, match="preview"):
+        reapply(store, ["t"], template, report["id"])
+    assert store.profiles == changed
+
+
+def test_anchor_change_at_identical_time_is_shown_and_proposed():
+    store = Store({"t": profile({})})
+    store.profiles["t"]["main_payoff"] = {"kind": "main_payoff", "state": "present", "time": 80,
+                                         "selected": True, "source": "user-selection"}
+    template = validate({"drop_anchor": "main_payoff"})
+    report = preview(store, ["t"], template)
+    assert report["summary"]["moved"] == 3
+    reapply(store, ["t"], template, report["id"])
+    cue = next(c for c in store.profiles["t"]["cues"] if c["role"] == "D")
+    assert cue["time"] == 80 and cue["name"] == "D main payoff"
+    assert cue["anchor"] == "main_payoff" and cue["review"] == "proposed"
+    assert preview(store, ["t"], template)["summary"]["tracks"] == 0
+
+
+def test_candidate_edit_preview_apply_undo_on_isolated_store(tmp_path, song):
+    from onset_service.store import Store as RealStore
+    from conftest import analysis as fixture_analysis
+    store = RealStore(tmp_path / "payoff-workspace")
+    try:
+        p = store.import_track(song)
+        p = store.apply_analysis(p["id"], fixture_analysis(song))
+        original_cues = p["cues"]
+        p = store.edit(p["id"], {"main_payoff": {"state": "present", "time": 16.2}})
+        assert p["cues"] == original_cues and p["overrides"]["main_payoff"]["time"] == 16.2
+        template = validate({"drop_anchor": "main_payoff"})
+        # Exercise the real RPC handlers without starting Service, audio imports,
+        # worker threads or a real library lifecycle.
+        from onset_service.service import Service
+        service = Service.__new__(Service)
+        service.store = store
+        service.cue_template({"template": template})
+        with pytest.raises(ValueError, match="Preview"):
+            service.apply_cue_template({"track_ids": [p["id"]]})
+        report = service.preview_cue_template({"track_ids": [p["id"]]})
+        service.apply_cue_template({"track_ids": [p["id"]], "preview_id": report["id"]})
+        updated = store.get(p["id"])
+        d = next(c for c in updated["cues"] if c["role"] == "D")
+        assert d["time"] == 16 and d["review"] == "proposed" and d["anchor"] == "main_payoff"
+        assert updated["analysis"]["sections"]["drop"] == 2
+        assert store.undo(p["id"])["cues"] == original_cues
+        changed_analysis = fixture_analysis(song)
+        changed_analysis["bpm"] = 121
+        assert store.apply_analysis(p["id"], changed_analysis)["main_payoff"]["time"] == 16.2
+        current = store.get(p["id"])
+        d = next(c for c in current["cues"] if c["role"] == "D")
+        store.review_cue(p["id"], d["id"], "approved", position=6)
+        unknown = fixture_analysis(song)
+        unknown["cues"] = [c for c in unknown["cues"] if c[0] != "D"]
+        unknown["cue_anchor"] = "main_payoff"
+        refreshed = store.apply_analysis(p["id"], unknown)
+        retained = next(c for c in refreshed["cues"] if c["role"] == "D")
+        assert retained["time"] == 6 and retained["manual"] and retained["review"] == "stale"
+        assert retained["anchor"] == "first_full_groove"
+        known = fixture_analysis(song)
+        known["cues"] = place(known, template, refreshed["main_payoff"])
+        known["cue_anchor"] = "main_payoff"
+        refreshed = store.apply_analysis(p["id"], known)
+        retained = next(c for c in refreshed["cues"] if c["role"] == "D")
+        assert retained["time"] == 6 and retained["anchor"] == "first_full_groove" and retained["name"] == "D drop"
+        for value in (-1, 24, float("inf"), True):
+            with pytest.raises(ValueError, match="within the audio"):
+                store.edit(p["id"], {"main_payoff": {"state": "present", "time": value}})
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize("review", ["approved", "rejected", "delete-approved"])
+@pytest.mark.parametrize("manual", [False, True])
+def test_reanalysis_cannot_replace_decided_groove_with_payoff(tmp_path, song, review, manual):
+    from onset_service.store import Store as RealStore
+    from conftest import analysis as fixture_analysis
+    store = RealStore(tmp_path / "decided-anchor")
+    try:
+        p = store.import_track(song)
+        p = store.apply_analysis(p["id"], fixture_analysis(song))
+        d = next(c for c in p["cues"] if c["role"] == "D")
+        store.review_cue(p["id"], d["id"], review, position=4 if manual else None)
+        result = fixture_analysis(song)
+        result["cues"] = [("A", "A intro", 0, None), ("D", "D main payoff", 16, None)]
+        result["cue_anchor"] = "main_payoff"
+        updated = store.apply_analysis(p["id"], result)
+        kept = next(c for c in updated["cues"] if c["role"] == "D")
+        assert kept["time"] == 4 and kept["name"] == "D drop" and kept["anchor"] == "first_full_groove"
+        assert kept["review"] == ("rejected" if review == "rejected" else "stale")
+        # A second changed analysis still cannot discard the now-stale decision.
+        result["bpm"] = 121
+        result["cues"] = [("A", "A intro", 0, None)]
+        updated = store.apply_analysis(p["id"], result)
+        kept = next(c for c in updated["cues"] if c["role"] == "D")
+        assert kept["time"] == 4 and kept["retained_decision"] == review
+        template = validate({"drop_anchor": "main_payoff"})
+        store.edit(p["id"], {"main_payoff": {"state": "present", "time": 16}})
+        report = preview(store, [p["id"]], template)
+        d_change = next(c for c in report["details"][0]["changes"] if c["role"] == "D")
+        assert d_change["action"] == "keep"
+        reapply(store, [p["id"]], template, report["id"])
+        assert next(c for c in store.get(p["id"])["cues"] if c["role"] == "D")["time"] == 4
+        # Reset is an explicit DJ decision allowing the new preset to replace it.
+        store.review_cue(p["id"], kept["id"], "proposed")
+        report = preview(store, [p["id"]], template)
+        assert next(c for c in report["details"][0]["changes"] if c["role"] == "D")["action"] == ("keep" if manual else "update")
+    finally:
+        store.close()

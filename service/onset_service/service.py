@@ -247,6 +247,7 @@ class Service:
             "review-queue": lambda: self.review_queue(p),
             "gig-readiness": lambda: self.gig_readiness(p),
             "cue-template": lambda: self.cue_template(p),
+            "preview-cue-template": lambda: self.preview_cue_template(p),
             "apply-cue-template": lambda: self.apply_cue_template(p),
             "genre-suggestions": lambda: self.genre_suggestions(p),
             "import-workspace": lambda: self.import_workspace(p),
@@ -307,8 +308,17 @@ class Service:
     def apply_cue_template(self, p):
         """Re-places open cue proposals under the saved template; decided cues are left alone."""
         from .cue_template import load, reapply
+        if not p.get("preview_id"):
+            raise ValueError("Preview cue changes before re-placing proposals")
         ids = p.get("track_ids") or [t["id"] for t in self.store.tracks()]
-        return reapply(self.store, ids, load(self.store))
+        with self.store.lock:
+            return reapply(self.store, ids, load(self.store), p["preview_id"])
+
+    def preview_cue_template(self, p):
+        from .cue_template import load, preview
+        ids = p.get("track_ids") or [t["id"] for t in self.store.tracks()]
+        with self.store.lock:
+            return preview(self.store, ids, load(self.store))
 
     def settings(self, p):
         allowed = {"cache_dir", "model_dir", "light_jobs", "heavy_jobs", "wsl_distro", "rekordbox_db", "experimental_models", "set_brief"}
@@ -450,8 +460,15 @@ class Service:
                                          {k:self.store.setting(k) for k in ("cache_dir", "model_dir")})
                         # The DJ's cue template decides which roles are proposed and where B and C sit.
                         from .cue_template import load as load_template, place
-                        result["cues"] = place(result, load_template(self.store))
-                        self.store.apply_analysis(tid, result)
+                        with self.store.lock:
+                            template = load_template(self.store)
+                            result["cues"] = place(result, template, self.store.get(tid).get("main_payoff"))
+                            # Missing metadata already means the legacy groove scheme.
+                            # Do not churn every old analysis revision just to spell it out.
+                            result.pop("cue_anchor", None)
+                            if template["drop_anchor"] == "main_payoff":
+                                result["cue_anchor"] = "main_payoff"
+                            self.store.apply_analysis(tid, result)
                         if result.get("state") != "complete":
                             partial.append(tid)
                         record["completed"].append(tid)

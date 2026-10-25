@@ -2,7 +2,7 @@
 // Development-only sample bridge so the renderer can be previewed in a plain browser (`npm run dev`).
 // Vite removes this block from production builds; the desktop app always provides the real bridge.
 // A calibration run, sped up, with the calibrator's own lines (crates/onset-transport/src/memory/calibrator.rs).
-let mockTemplate:any={schema_version:1,bars_before_drop:{B:32,C:16},roles:Object.fromEntries(
+let mockTemplate:any={schema_version:2,drop_anchor:'first_full_groove',bars_before_drop:{B:32,C:16},roles:Object.fromEntries(
  [['A','A'],['B','B'],['C','C'],['D','D'],['E','E'],['F','F'],['G','G'],['L','H'],['I',null]].map(([r,pad])=>[r,{enabled:true,memory:true,hot:pad!==null,pad}]))};
 function calibrationMock(){
  const listeners=new Set<(e:any)=>void>();let timers:number[]=[],calibrating=false,calibrated=false;
@@ -63,6 +63,7 @@ if(import.meta.env.DEV&&typeof window!=='undefined'&&!(window as any).onset){
   'review-queue':()=>tracks.filter(t=>t.analysis).map((t,i)=>({track_id:t.id,score:9-i,pending_cues:t.cues.length,reviewable:true,reasons:i%2?['Sources disagree whether outro exists','Unapproved hot cue D or mix-in/out cues']:['Unapproved hot cue D or mix-in/out cues']})),
   // The cue template (service/onset_service/cue_template.py), kept in memory for the preview.
   'cue-template':(p:any)=>{if(p?.template)mockTemplate=p.template;return mockTemplate;},
+  'preview-cue-template':()=>({id:'mock-cue-preview',summary:{tracks:0,moved:0,added:0,removed:0,kept:0},details:[]}),
   'apply-cue-template':()=>({tracks:7,moved:9,added:2,removed:1,kept:14}),
   'gig-readiness':(p:any)=>{
    const ids:string[]=p?.track_ids||(p?.set_id?plan.track_ids:tracks.slice(0,6).map(t=>t.id));

@@ -7,6 +7,14 @@ the recovered seven-session queue, approved `1952716` packaging and pending
 main-drop D change. Eight new cross-check evidence-handling regressions pass;
 musical, installed-app and full-plan acceptance remain open.
 
+P3.3/P3.5/P5.2 source follow-up: the opt-in main-payoff cue preset now separates
+selected payoff evidence from first groove, previews exact proposal changes and
+preserves reviewed/manual cue meanings through repeated reanalysis. **221 service
+tests, 67 UI tests and production UI build pass**; independent review is clear.
+Existing/default templates retain first groove. Automatic main-payoff detection,
+disputed labels and combined installed acceptance remain open; see the current
+continuation for scope.
+
 2026-10-24 release follow-up: [continuation evidence](CONTINUATION_2026-10-24.md) records installed abec26f, exact workspace preservation, current UI/worker checks and all six models completing on four real tracks. Listening, cue approval and broader acceptance remain open; no product milestone is closed by model execution alone.
 
 P5.2 listening-review follow-up: coloured cue buttons now seek to the exact cue in source; a separate **−4s** control preserves lead-in audition. UI tests (39), production build and candidate 3630ea4 installer packaging pass. Installation/visible acceptance remain pending; see the continuation record.

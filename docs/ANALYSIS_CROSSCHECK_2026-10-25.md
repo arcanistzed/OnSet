@@ -5,8 +5,10 @@ most drop positions**. No cue, grid, key, tempo, approval or rekordbox record wa
 changed. Agreement below describes estimates, not verified musical accuracy.
 
 The DJ chose the **main payoff drop** as the future D target, keeping first full
-groove separate. That change is still unimplemented. Existing D cues retain their
-old first-groove meaning; do not simply relabel or approve them as main drops.
+groove separate. The selectable workflow is now implemented and source verified
+in the [current continuation](CONTINUATION_2026-10-25.md); it is not an automatic
+detector. Existing D cues retain their old meaning; do not simply relabel or
+approve them as main drops.
 
 ## Evidence and reproducibility
 
@@ -104,6 +106,7 @@ halfway between them. These two checks can confirm or reject the suspected
 half-beat offset; do not move either grid automatically.
 
 The automated pass is complete, but it has not supplied verified main-drop labels.
-The next implementation must separate main-payoff candidates from first-groove
-evidence and preserve uncertainty, human corrections and explicit approvals. It
-must show the proposed effects before changing existing real-library cues.
+The new selectable preset separates main-payoff candidates from first-groove
+evidence and preserves uncertainty, human corrections and explicit approvals.
+Its combined installer and visible acceptance remain pending. Any real-library
+proposal changes still require inspecting the exact preview.
