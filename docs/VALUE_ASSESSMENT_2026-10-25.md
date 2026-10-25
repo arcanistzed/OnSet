@@ -30,6 +30,29 @@ For most of OnSet's distinctive features only the first kind exists. The open ga
 same ones PLAN_PROGRESS lists: M3 listening, M4 transition quality and M6 real rekordbox
 acceptance.
 
+**Revision, same day: accuracy evidence now comes from a cross-check.** The user does not
+want to do listening reviews. In their words: "review it very throughly and ensure it's
+accurate based on the phrase analysis from Rekordbox, the audio analysis from Gemini, and
+the detailed spectogram analysis." Another session is building that three-way cross-check.
+DJ yes/no questions are asked only where the sources genuinely disagree.
+
+So in this document "accuracy evidence" means:
+
+- **Agreement scores** between OnSet's analysis and three independent sources: rekordbox's
+  phrase analysis, Gemini listening to the audio, and the detailed spectrogram read.
+- **The DJ's answers** to the questions the cross-check raises.
+
+This is a third kind of evidence, between engineering and listening. Agreement is not
+ground truth:
+
+- rekordbox's phrases are themselves called error-prone by DJs.
+- Gemini and the spectrogram reads are model opinions. Earlier reads of Stop It disagreed
+  by up to 32 bars.
+- All the sources can share a bias, for example treating the first energy jump as the drop.
+
+High agreement raises confidence, and disagreement finds the tracks worth a DJ's question.
+Neither proves a cue is where the DJ would put it.
+
 ## 1. Summary
 
 OnSet's defensible value is narrower than its feature list. Three things nobody else ships:
@@ -76,8 +99,9 @@ Where OnSet is redundant or behind:
 
 The analysis models (allin1, EDMFormer, Beat This!, Demucs, Essentia) are a means, not a
 selling point. DJs ask for phrase counters and correct cues, not deeper structure analysis
-**[opinion, repeated]**. The models only earn their cost if a listening benchmark shows they
-beat rekordbox's phrase analysis on the cues and windows they produce.
+**[opinion, repeated]**. The models only earn their cost if the cross-check shows that OnSet's
+resolved structure agrees with the independent sources more often than rekordbox's phrases
+alone, or settles disagreements the DJ then confirms.
 
 The biggest structural risk is reach:
 
@@ -152,7 +176,8 @@ taste.
   the uncertainty stated.
 - A structure-aware show on a laptop rekordbox deck without CDJs, Bridge or a VJ.
 
-**Potentially ahead, unproven.** Each of these needs listening labels.
+**Potentially ahead, unproven.** Each of these needs cross-check agreement scores,
+plus the DJ's answers where sources disagree.
 
 - Cue placement accuracy.
 - Phrase and section accuracy from the multi-model resolution.
@@ -186,7 +211,8 @@ taste.
 | **rekordbox adds the feature:** Intelligent Cue Creation already learns the DJ's cues; SMART CUE (undocumented); Mix Point Link; SoundSwitch auto-lighting; Radar suggestions | High for cues and lighting, medium for transition scoring, low for audio-reactive video | OnSet's cue placement becomes redundant if RB's is good enough | Compete on review and control rather than placement; benchmark OnSet's cues against RB's own on the same tracks |
 | **Consolidation:** AlphaTheta owns Pioneer, rekordbox and Serato; inMusic owns Engine and SoundSwitch and is buying Traktor (NI) | Ongoing | Fewer neutral integration points | Stay rekordbox-first; avoid features only one vendor can deliver |
 | **Heavy local models:** Demucs stems at 13.5 GB per 99 tracks before FLAC; EDMFormer runs out of memory on long tracks; jobs of hours; C: is short of space | Certain on this laptop | Prep feels slower than RB's Cloud Analysis; disk pressure | Make deep analysis opt-in per track or for flagged disagreements, not library-wide by default |
-| **Unproven accuracy:** no listening benchmark; sources disagree by up to 32 bars | Certain until labels exist | Cannot honestly claim better cues or structure | Run the listening review (REVIEW_LISTENING_2026-10-22) before adding analysis features |
+| **Unproven accuracy:** no listening benchmark; sources disagree by up to 32 bars | Certain until the cross-check reports | Cannot honestly claim better cues or structure | Run the three-way cross-check (rekordbox phrases, Gemini audio, spectrogram) before adding analysis features; publish agreement per event type; never present agreement as ground truth |
+| **Shared bias in the cross-check:** sources agree on the same mistake, e.g. an energy jump read as the drop | Medium | High agreement hides a wrong cue | Report agreement separately for each pair of sources; send any unanimous-but-unusual answer (drop in the first 8 bars, no outro) to the DJ as a yes/no question; track the DJ's corrections as the only ground truth |
 | **Laptop risk in the booth:** DJs see the laptop as a single point of failure **[wide]** | High | DJs will not run an extra app beside rekordbox at a gig unless it is clearly read-only and light | Keep show mode read-only, pause jobs, measure CPU; already in O4 |
 
 ## 5. Workflow fit: what DJs do, and how OnSet serves it
@@ -249,16 +275,16 @@ Each workflow is ranked by how often a DJ feels the need.
 
 ## 7. Recommendations ranked by value to a DJ
 
-| # | Recommendation | Why it ranks here | Kind of work | Needs listening or live test? |
+| # | Recommendation | Why it ranks here | Kind of work | Evidence needed |
 |---|---|---|---|---|
-| 1 | **Finish the listening review** (REVIEW_LISTENING_2026-10-22): La Danza's drop, labels for 11 tracks, transition verdicts | Nothing in §1's value claims about accuracy can be made until it is done; it also decides whether deep analysis earns its cost | DJ time, about 2–3 hours | Yes, it *is* the listening test |
+| 1 | **Finish the three-way cross-check** (rekordbox phrases, Gemini audio analysis, spectrogram read) over the analysed tracks: agreement scores per event (first groove or D, breakdown, outro, mix windows) and per source pair, with DJ yes/no questions only where the sources disagree. It replaces the listening review in REVIEW_LISTENING_2026-10-22 | No accuracy claim in §1 can be made until it reports; it also decides whether deep analysis earns its cost | Engineering, plus a few minutes of DJ answers per disputed track | Agreement scores (not ground truth) plus the DJ's answers |
 | 2 | **Fast cue review with a DJ-defined cue template** (roles, pads, bars before the drop, memory or hot) | Every new track; the core of the "draft then check" practice | UI and service | Yes, measure seconds per track and edits per cue |
-| 3 | **Benchmark OnSet's cues against rekordbox's Intelligent Cue Creation and phrase analysis** on the labelled tracks | Decides whether OnSet competes on placement or only on control | Engineering plus labels | Yes |
+| 3 | **Compare OnSet's cues with rekordbox's Intelligent Cue Creation** on the cross-checked tracks: how often each set of cues lands where the other two sources agree, and which the DJ picks on disputed tracks | Decides whether OnSet competes on placement or only on control. Because rekordbox's phrases are one of the cross-check sources, the comparison leans towards rekordbox; count rekordbox-only agreement separately | Engineering plus the DJ's answers | Cross-check agreement; DJ choice on disputes |
 | 4 | **Pre-gig readiness check** for a playlist: missing files, grid conflicts, missing first-beat cue, unapproved D, stale approvals | Every gig; prevents the failures DJs fear most; data already exists | Service and UI, small | No for the check; yes for usefulness |
 | 5 | **Live next-track options from the gig pool** (3–5 tracks with the prepared transition; more, same or less energy) | Every track, for laptop RB DJs; delivers O1's missing half | Live view and engine | Yes, at the decks |
 | 6 | **Write approved pairings and energy or slot tags into rekordbox** (My Tag or comment, previewed and approved like cues) | Makes preparation visible on CDJs, where most club DJs play | rekordbox write path, using the existing preview and backup | Yes, check in rekordbox and on CDJs |
 | 7 | **Pool-and-blocks planner output** alongside the full order | Matches how club DJs prepare | Planner and UI | Yes, DJ judgement |
-| 8 | **Make deep analysis opt-in, or limited to disagreements** | Cuts hours and gigabytes from prep; no loss until the benchmark shows the models help | Service settings | Yes, after #1 |
+| 8 | **Make deep analysis opt-in, or limited to disagreements** | Cuts hours and gigabytes from prep; no loss until the cross-check shows the deep models raise agreement or settle disputes the DJ confirms. The cross-check itself can be the trigger: run deep models only on tracks where rekordbox, Gemini and the spectrogram disagree | Service settings | Cross-check agreement with and without deep models, after #1 |
 | 9 | **Visual outputs for streamers and VJs:** Spout or NDI, a now-playing overlay, Ableton Link and OSC with phrase and section | Serves the subset that already runs the laptop; small work | Rust | Yes, in OBS and Resolume |
 | 10 | **Tracklist from the live link** | Cheap; occasional need | Rust | Light |
 | 11 | **Check rekordbox Mix Point Link** against `mixplan.py`'s assumption, and correct the docstring | Avoids building something native | Reading rekordbox 7.2.19's database and UI | No |
@@ -276,8 +302,18 @@ Deliberately not recommended:
 ## 8. What this assessment cannot say
 
 - **Whether OnSet's cues, sections or transitions are musically better than rekordbox's.**
-  No listening labels exist. Six models completing on four tracks is engineering evidence
-  only.
+  Six models completing on four tracks is engineering evidence only. The planned three-way
+  cross-check will give agreement scores, but agreement is not ground truth:
+  - rekordbox's phrases are one of the sources, so they can't judge themselves.
+  - Gemini and the spectrogram reads are model opinions.
+  - All the sources may share a bias.
+  
+  The DJ's answers on disputed tracks are the only ground truth the plan now collects, and
+  they cover disputed tracks only. A wrong cue that every source agrees on can still go
+  unnoticed until it is played.
+- **Whether transitions work.** The cross-check covers structure, not how two tracks sound
+  together. Transition quality has no evidence source until the DJ gives verdicts, either
+  from playing the pairs or through the practice-mix import (#13).
 - **How many target users run rekordbox on a laptop at gigs.** No current share was found;
   the 2022 census (about 21,000 respondents, mostly hobbyists) had just over half on
   controllers and laptops and about a quarter on CDJs or standalones.
