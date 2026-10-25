@@ -24,6 +24,7 @@ import {AiAdviser} from './AiAdviser';
 import {ShowSettings} from './ShowSettings';
 import {GenreEvidence} from './GenreEvidence';
 import {RekordboxLink} from './RekordboxLink';
+import {RekordboxHistory} from './RekordboxHistory';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
 import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT} from './library';
@@ -120,7 +121,7 @@ function App(){
   const [tracks,setTracks]=useState<Track[]>([]),[selected,setSelected]=useState<string|null>(null),[marked,setMarked]=useState<string[]>([]),[query,setQuery]=useState(''),[filter,setFilter]=useState('all');
   const [error,setError]=useState(''),[message,setMessage]=useState(''),[busy,setBusy]=useState(false),[jobs,setJobs]=useState<any[]>([]),[account,setAccount]=useState<any>({accounts:[]}),[models,setModels]=useState<any[]>([]),[model,setModel]=useState('');
   const [position,setPosition]=useState(0),[source,setSource]=useState(''),[snap,setSnap]=useState(true),[click,setClick]=useState(false),[playing,setPlaying]=useState(false);
-  const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null),[manifests,setManifests]=useState<any[]>([]);
+  const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null);
   const [brief,setBrief]=useState<any>(()=>restoreBrief(null)),briefLoaded=useRef(false);
   const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
@@ -467,10 +468,7 @@ function App(){
               <WorkspaceRecovery run={run}/>
               <PortableImport run={run}/>
               <CacheRelocation run={run}/>
-              <Card title="rekordbox write history" actions={<Button size="sm" icon="refresh" onClick={()=>run(async()=>{const r=await api.call('manifests');setManifests(r);return r;})}>Load backups</Button>}>
-                {manifests.map(m=><div className="list-row" key={m.id}><span className="grow">{m.created} · {m.written.length} tracks written</span><Button size="sm" onClick={()=>run(()=>api.call('restore',{id:m.id}),'Database restored; previous state backed up')}>Restore</Button></div>)}
-                {!manifests.length&&<p className="muted">Load backups to restore rekordbox to a state before an OnSet write.</p>}
-              </Card>
+              <RekordboxHistory tracks={tracks} run={run}/>
               <Card title="Export">
                 <div className="row">
                   <Button icon="download" onClick={()=>run(()=>api.export({kind:'profiles',name:'onset-profiles.json'}))}>Track profiles</Button>
