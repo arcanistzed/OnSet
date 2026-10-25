@@ -41,6 +41,10 @@ const EAR_LAG_SAMPLES: u32 = 20;
 const EAR_JUMP_S: f64 = 0.5;
 /// Tracks whose waveforms are kept for the ear: a set's decks, with room for reloads.
 const EAR_CACHE: usize = 16;
+/// Seconds the show stays on the ear's last pick while the ear has no verdict (a playhead
+/// jump resets its listening, a moment of poor fit), so the transport's choice doesn't
+/// flip it back to the outgoing deck and restart the ear's hold.
+const EAR_GRACE_S: f64 = 5.0;
 /// The two-deck simulator: seconds of the first track alone before the blend, and the
 /// blend's length in bars.
 const BLEND_LEAD_S: f64 = 30.0;
@@ -57,6 +61,28 @@ struct Listening {
     tracks: Vec<(u8, TrackRef)>,
     /// Each playing deck's playhead at the last listen, and when: `(deck, playhead_s, time_s)`.
     heads: Vec<(u8, f64, f64)>,
+    /// The ear's last pick and when it made it, kept through a short loss of its verdict.
+    held: Option<(u8, f64)>,
+}
+
+/// The deck the ear has the show follow at `time_s`, and what to hold for later: its
+/// verdict when it has one; else, for [`EAR_GRACE_S`] after its last verdict, that pick
+/// while the deck still plays; else nothing, and the transport's choice stands.
+fn ear_pick(
+    verdict: Option<u8>,
+    held: Option<(u8, f64)>,
+    playing: &[u8],
+    time_s: f64,
+) -> (Option<u8>, Option<(u8, f64)>) {
+    if let Some(deck) = verdict {
+        return (Some(deck), Some((deck, time_s)));
+    }
+    match held {
+        Some((deck, since)) if playing.contains(&deck) && time_s - since <= EAR_GRACE_S => {
+            (Some(deck), held)
+        }
+        _ => (None, None),
+    }
 }
 
 pub struct EngineConfig {
@@ -918,10 +944,16 @@ impl Running {
         ear.set_lag(self.ear_lag_s);
         ear.listen(time_s, heard, &positions);
         ear.set_current(self.deck);
-        let pick = ear.choose(time_s, live.master)?;
-        if self.deck != Some(pick) {
-            tracing::info!(deck = pick, verdict = ?ear.verdict(), "the room hears another deck");
+        let verdict = ear.choose(time_s, live.master);
+        if let Some(deck) = verdict
+            && self.deck != Some(deck)
+        {
+            tracing::info!(deck, verdict = ?ear.verdict(), "the room hears another deck");
         }
+        let playing: Vec<u8> = positions.iter().map(|p| p.0).collect();
+        let (pick, held) = ear_pick(verdict, state.held, &playing, time_s);
+        state.held = held;
+        let pick = pick?;
         live.decks.into_iter().find(|d| d.deck == pick)
     }
 
@@ -956,6 +988,7 @@ impl Running {
             ear,
             tracks,
             heads: Vec::new(),
+            held: None,
         });
     }
 
@@ -1289,6 +1322,35 @@ mod tests {
     use super::*;
     use std::path::{Path, PathBuf};
     use std::time::Duration;
+
+    /// The two-deck simulator showed the flicker: right after the ear moved the show to
+    /// deck B its verdict lapsed for a moment, the transport's choice (still deck A) took
+    /// over, and the ear's 4 s hold started again from A.
+    #[test]
+    fn a_lapse_in_the_ears_verdict_keeps_its_last_pick() {
+        // The ear picks B at 50 s.
+        let (pick, held) = ear_pick(Some(1), None, &[0, 1], 50.0);
+        assert_eq!((pick, held), (Some(1), Some((1, 50.0))));
+        // No verdict a moment later: still B.
+        let (pick, held) = ear_pick(None, held, &[0, 1], 51.0);
+        assert_eq!(pick, Some(1));
+        // Still none at 55 s, within the grace: still B, counted from the last verdict.
+        let (pick, held) = ear_pick(None, held, &[0, 1], 55.0);
+        assert_eq!((pick, held), (Some(1), Some((1, 50.0))));
+        // Past the grace: the transport decides again.
+        assert_eq!(ear_pick(None, held, &[0, 1], 55.1), (None, None));
+    }
+
+    #[test]
+    fn a_held_pick_ends_when_its_deck_stops() {
+        let (_, held) = ear_pick(Some(1), None, &[0, 1], 50.0);
+        assert_eq!(ear_pick(None, held, &[0], 51.0), (None, None));
+        // A new verdict replaces the held pick at once.
+        assert_eq!(
+            ear_pick(Some(0), held, &[0, 1], 51.0),
+            (Some(0), Some((0, 51.0)))
+        );
+    }
 
     #[test]
     fn track_label_drops_the_dash_without_an_artist() {
