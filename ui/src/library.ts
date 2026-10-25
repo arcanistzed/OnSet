@@ -139,3 +139,10 @@ export function queueStep(queue:string[],current:string|null,delta:1|-1,previous
  const around=delta>0?previous.slice(j+1):previous.slice(0,j).reverse();
  return around.find(id=>queue.includes(id))??null;
 }
+
+/** Of `ids`, the tracks with a cue decision rekordbox would act on (approved, or approved for removal). */
+export function writableTracks(tracks:{id:string;cues:{review:string}[]}[],ids:string[]){
+ const wanted=new Set(ids),acts=(c:{review:string})=>c.review==='approved'||c.review==='delete-approved';
+ const chosen=tracks.filter(t=>wanted.has(t.id)&&t.cues.some(acts));
+ return {ids:chosen.map(t=>t.id),cues:chosen.reduce((n,t)=>n+t.cues.filter(acts).length,0)};
+}

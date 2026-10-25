@@ -27,7 +27,7 @@ import {RekordboxLink} from './RekordboxLink';
 import {RekordboxHistory} from './RekordboxHistory';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
-import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT,reviewQueue,queueStep} from './library';
+import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT,reviewQueue,queueStep,writableTracks} from './library';
 
 const api=window.onset;
 const keyLabel=(k:any)=>typeof k==='string'?k:k?.name||'';
@@ -123,7 +123,7 @@ function App(){
   const [position,setPosition]=useState(0),[source,setSource]=useState(''),[snap,setSnap]=useState(true),[click,setClick]=useState(false),[playing,setPlaying]=useState(false);
   const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null);
   const [brief,setBrief]=useState<any>(()=>restoreBrief(null)),briefLoaded=useRef(false);
-  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null);
+  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null),[libraryWrite,setLibraryWrite]=useState<{preview:any}|null>(null);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
   const [priority,setPriority]=useState<Record<string,any>>({}),[planJob,setPlanJob]=useState<string|null>(null),planJobRef=useRef<string|null>(null);
   const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null),queueNav=useRef<{prev:string|null;next:string|null}>({prev:null,next:null}),lastQueue=useRef<string[]>([]);
@@ -195,7 +195,7 @@ function App(){
   function openTrack(id:string){setSelected(id);setPage('track');}
   // Large jobs ask first: one click once queued 160 deep tracks (hours of work, gigabytes of stems).
   function queueAnalysis(trackIds:string[],deep:boolean){setAskAnalysis(null);return run(()=>api.call('analyze',{track_ids:trackIds,deep}),deep?'Deep analysis queued':'Light analysis queued');}
-  function startAnalysis(deep:boolean){if(ids.length>CONFIRM_ANALYSIS_AT)setAskAnalysis({deep});else queueAnalysis(ids,deep);}
+  function startAnalysis(deep:boolean){setLibraryWrite(null);if(ids.length>CONFIRM_ANALYSIS_AT)setAskAnalysis({deep});else queueAnalysis(ids,deep);}
   const unsorted=tracks.filter(t=>matchesFilters(t,libraryFilters)&&(`${t.title} ${t.artist} ${t.genres.join(' ')} ${keyLabel(t.key)} ${canonicalKey(t.key)||''} ${t.bpm||''}`).toLowerCase().includes(query.toLowerCase())&&(filter==='all'||filter==='review'&&t.review_state!=='reviewed'||filter==='ready'&&t.analysis_state==='complete'));
   // The review view puts disagreements, stale cues and high-impact cues first.
   const filtered=filter==='review'?[...unsorted].sort((a,b)=>(priority[b.id]?.score||0)-(priority[a.id]?.score||0)):unsorted;
@@ -207,6 +207,7 @@ function App(){
   const playlistNames=[...new Set(tracks.flatMap(t=>(t as any).rekordbox_playlists||[]))].sort();
   const ids=analysisSelection(tracks,filtered,marked);
   const hiddenSelected=ids.filter(id=>!filtered.some(t=>t.id===id)).length;
+  const writable=writableTracks(tracks,ids);
   const activeJobs=jobs.filter(j=>['running','queued'].includes(j.state));
   const accountProps={account,connect,models,model,setModel:(id:string)=>{setModel(id);connect('model',{id});},loadModels};
   if(!api)return <main className="standalone"><h1>OnSet Prep</h1><p>Open the desktop application to connect your local library.</p></main>;
@@ -251,6 +252,20 @@ function App(){
           {marked.length>0&&<Button kind="ghost" size="sm" onClick={()=>setMarked([])}>Clear</Button>}
           <Button size="sm" disabled={busy||!ids.length} onClick={()=>startAnalysis(false)}>Light analysis</Button>
           <Button size="sm" kind="primary" icon="spark" disabled={busy||!ids.length} onClick={()=>startAnalysis(true)}>Deep analysis</Button>
+          <Button size="sm" disabled={busy||!writable.ids.length} title={writable.ids.length?undefined:'No approved cues in these tracks'} onClick={()=>{setAskAnalysis(null);setLibraryWrite(w=>w?null:{preview:null});}}>Write cues to rekordbox</Button>
+        </div>}
+        {libraryWrite&&<div className="write-preview" role="dialog" aria-label="Write approved cues to rekordbox">
+          <h4>Write approved cues for {writable.ids.length} track{writable.ids.length===1?'':'s'}</h4>
+          <p className="muted">{writable.cues} approved decision{writable.cues===1?'':'s'} from the {marked.length?'checked':'visible'} tracks; tracks without approved cues are left out. Only approved cues are written, after you check the exact changes. Close rekordbox first; one backup is saved for the whole write.</p>
+          <div className="row" style={{marginTop:10}}>
+            <Button size="sm" onClick={()=>run(async()=>{const r=await api.call('rekordbox-preview',{track_ids:writable.ids});setLibraryWrite({preview:r});return r;})}>Preview memory cues</Button>
+            <Button size="sm" onClick={()=>run(async()=>{const r=await api.call('rekordbox-preview',{track_ids:writable.ids,hot:true});setLibraryWrite({preview:r});return r;})}>Preview hot cues</Button>
+          </div>
+          {libraryWrite.preview&&<div style={{marginTop:12}}><WriteChanges value={libraryWrite.preview} tracks={tracks}/></div>}
+          <div className="row end" style={{marginTop:12}}>
+            <Button kind="ghost" size="sm" onClick={()=>setLibraryWrite(null)}>Close</Button>
+            {libraryWrite.preview&&<Button kind="primary" size="sm" disabled={busy||libraryWrite.preview.stale||!libraryWrite.preview.changes.length} onClick={()=>run(async()=>{const r=await api.call('rekordbox-apply',{id:libraryWrite.preview.id});setLibraryWrite(null);return r;},'Approved changes written; backup saved')}>Apply changes to {libraryWrite.preview.changes.length} track{libraryWrite.preview.changes.length===1?'':'s'}</Button>}
+          </div>
         </div>}
         {askAnalysis&&(()=>{const e=analysisEstimate(tracks,ids,askAnalysis.deep),kind=askAnalysis.deep?'Deep':'Light',already=e.count-e.pending.length;
           return <div className="write-preview" role="dialog" aria-label={`Confirm ${kind.toLowerCase()} analysis`}>
