@@ -59,6 +59,18 @@ if(import.meta.env.DEV&&typeof window!=='undefined'&&!(window as any).onset){
   'plan-job':()=>({id:'job-plan',kind:'plan',state:'complete',result:{plan_ids:['plan-1'],conflicts:[]}}),replan:()=>({plans:[plan],conflicts:[]}),
   'genre-suggestions':(p:any)=>({tagged_tracks:4,spaces:{'discogs-effnet':9},suggestions:(p?.track_ids||[]).map((id:string)=>({track_id:id,space:'discogs-effnet',suggestions:[{genre:'Tech House',score:.82,examples:['track-1','track-5']},{genre:'Minimal',score:.61,examples:['track-7']}]}))}),
   'review-queue':()=>tracks.filter(t=>t.analysis).map((t,i)=>({track_id:t.id,score:9-i,pending_cues:t.cues.length,reviewable:true,reasons:i%2?['Sources disagree whether outro exists','Unapproved hot cue D or mix-in/out cues']:['Unapproved hot cue D or mix-in/out cues']})),
+  'gig-readiness':(p:any)=>{
+   const ids:string[]=p?.track_ids||(p?.set_id?plan.track_ids:tracks.slice(0,6).map(t=>t.id));
+   const fix=(action:string,label:string)=>({action,label});
+   const samples=[[],[{code:'drop-unapproved',severity:'warning',message:'Drop cue (D) is not approved',fix:fix('review-cues','Review cue D')}],
+    [{code:'missing-file',severity:'blocker',message:'Audio file is missing: C:\\Music\\gone.flac',fix:fix('relocate','Locate the audio file')}],
+    [{code:'grid-conflict',severity:'blocker',message:"OnSet's downbeats sit 120 ms from rekordbox's; cues would land off the grid",fix:fix('grid','Compare the grids')},{code:'no-key',severity:'warning',message:'Key is missing',fix:fix('edit','Set the key')}],
+    [{code:'not-written',severity:'info',message:'6 approved cue(s) not yet written to rekordbox',fix:fix('rekordbox-write','Preview the write')}]];
+   const rows=ids.map((id,i)=>{const issues=samples[i%samples.length] as any[],t=byId(id);
+    return {track_id:id,title:t?.title,artist:t?.artist,issues,status:issues.some(x=>x.severity==='blocker')?'blocked':issues.some(x=>x.severity==='warning')?'check':'ready'};});
+   const count=(s:string)=>rows.filter(r=>r.status===s).length;
+   return {schema_version:1,scope:{},summary:{ready:count('ready'),check:count('check'),blocked:count('blocked'),total:rows.length},tracks:rows};
+  },
   'import-workspace':()=>({imported:3,located:2,missing_audio:['x'],history_rows:4,failed:[]}),'relocate-cache':()=>({updated:9,cache_files_rewritten:9,missing:[]}),'transition-rating':(p:any)=>({...p,rated_at:new Date().toISOString()}),'rekordbox-preview':(p:any)=>p.repair_hot_slots?{id:'pr',kind:'hot-slot-repair',stale:false,moves:[{title:'Stardust',before:{Comment:'D drop',Kind:4},kind:5},{title:'Empty',before:{Comment:'G drop 2',Kind:7},kind:8}],drops:[{title:'Stardust',before:{Comment:'E breakdown',Kind:5}}],conflicts:[]}:({id:'pv',stale:false,changes:[{track_id:p.track_ids?.[0]||'track-0',operations:[{role:'A',target:{InMsec:6000,OutMsec:21000},delete:[]},{role:'B',target:{InMsec:36000,OutMsec:-1},delete:['x']}],comment_before:'',comment_after:''}],conflicts:[]}),
  };
  (window as any).onset={
