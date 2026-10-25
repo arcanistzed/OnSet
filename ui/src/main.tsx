@@ -26,6 +26,7 @@ import {GenreEvidence} from './GenreEvidence';
 import {RekordboxLink} from './RekordboxLink';
 import {RekordboxHistory} from './RekordboxHistory';
 import {GigReadiness} from './GigReadiness';
+import {CueTemplateSettings} from './CueTemplateSettings';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
 import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT,reviewQueue,queueStep,writableTracks} from './library';
@@ -124,10 +125,10 @@ function App(){
   const [position,setPosition]=useState(0),[source,setSource]=useState(''),[snap,setSnap]=useState(true),[click,setClick]=useState(false),[playing,setPlaying]=useState(false);
   const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null);
   const [brief,setBrief]=useState<any>(()=>restoreBrief(null)),briefLoaded=useRef(false);
-  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null),[libraryWrite,setLibraryWrite]=useState<{preview:any}|null>(null),[gig,setGig]=useState(false);
+  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null),[libraryWrite,setLibraryWrite]=useState<{preview:any}|null>(null),[gig,setGig]=useState(false),[decidedIn,setDecidedIn]=useState<{id:string;seconds:number}|null>(null);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
   const [priority,setPriority]=useState<Record<string,any>>({}),[planJob,setPlanJob]=useState<string|null>(null),planJobRef=useRef<string|null>(null);
-  const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null),queueNav=useRef<{prev:string|null;next:string|null}>({prev:null,next:null}),lastQueue=useRef<string[]>([]);
+  const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null),queueNav=useRef<{prev:string|null;next:string|null}>({prev:null,next:null}),lastQueue=useRef<string[]>([]),openedAt=useRef<{id:string|null;at:number;decided:boolean|null}>({id:null,at:0,decided:null});
   const track=tracks.find(t=>t.id===selected)||null;
   useEffect(()=>{window.scrollTo({top:0});},[page,selected]);
   useEffect(()=>{if(!message)return;const timer=setTimeout(()=>setMessage(''),5000);return()=>clearTimeout(timer);},[message]);
@@ -205,6 +206,12 @@ function App(){
   if(queuePosition>=0)lastQueue.current=queue;
   const prevInQueue=queueStep(queue,selected,-1,lastQueue.current),nextInQueue=queueStep(queue,selected,1,lastQueue.current);
   queueNav.current={prev:prevInQueue,next:nextInQueue};
+  const allDecided=!!track&&track.cues.length>0&&track.cues.every(c=>c.review!=='proposed'&&c.review!=='stale');
+  // Seconds from opening a track to deciding its last open cue: the review speed the value assessment asks to measure.
+  useEffect(()=>{openedAt.current={id:selected,at:Date.now(),decided:null};},[selected]);
+  useEffect(()=>{const o=openedAt.current;if(!track||o.id!==track.id)return;
+    if(o.decided===false&&allDecided)setDecidedIn({id:track.id,seconds:Math.round((Date.now()-o.at)/1000)});
+    o.decided=allDecided;},[track,allDecided]);
   const playlistNames=[...new Set(tracks.flatMap(t=>(t as any).rekordbox_playlists||[]))].sort();
   const ids=analysisSelection(tracks,filtered,marked);
   const hiddenSelected=ids.filter(id=>!filtered.some(t=>t.id===id)).length;
@@ -335,9 +342,9 @@ function App(){
         </Card>
         <div style={{marginTop:20}}><Tabs value={trackTab} onChange={setTrackTab} options={[{id:'cues',label:'Cues',count:track.cues.length},{id:'profile',label:'Profile'},{id:'evidence',label:'Evidence'},{id:'stems',label:'Stems'},{id:'corrections',label:'Corrections'}]}/></div>
         {trackTab==='cues'&&<>
-          {track.cues.length>0&&track.cues.every(c=>c.review!=='proposed')&&nextInQueue&&<div className="write-preview row" role="status">
-            <span className="grow"><Icon name="check" size={14}/> Every cue on this track is decided.</span>
-            <Button size="sm" kind="primary" icon="down" onClick={()=>setSelected(nextInQueue)}>Next in queue: {tracks.find(t=>t.id===nextInQueue)?.title}</Button>
+          {allDecided&&<div className="write-preview row" role="status">
+            <span className="grow"><Icon name="check" size={14}/> Every cue on this track is decided{decidedIn?.id===track.id?` (${decidedIn.seconds} s on this track)`:''}.</span>
+            {nextInQueue&&<Button size="sm" kind="primary" icon="down" onClick={()=>setSelected(nextInQueue)}>Next in queue: {tracks.find(t=>t.id===nextInQueue)?.title}</Button>}
           </div>}
           <CueReview track={track} run={run} seek={seek} play={()=>audio.current?.play().catch(e=>setError(e.message))}/>
           <Card title="Write to rekordbox" actions={<>
@@ -469,7 +476,7 @@ function App(){
       {page==='settings'&&<>
         {head('Settings')}
         <div className="settings">
-          <nav className="settings-nav" aria-label="Settings sections">{[['jobs','Jobs'],['account','ChatGPT'],['analysis','Analysis engine'],['energy','Energy calibration'],['rekordbox','rekordbox link'],['data','Data & backups']].map(([id,label])=><button key={id} className={settingsTab===id?'active':''} onClick={()=>setSettingsTab(id)}>{label}</button>)}</nav>
+          <nav className="settings-nav" aria-label="Settings sections">{[['jobs','Jobs'],['template','Cue template'],['account','ChatGPT'],['analysis','Analysis engine'],['energy','Energy calibration'],['rekordbox','rekordbox link'],['data','Data & backups']].map(([id,label])=><button key={id} className={settingsTab===id?'active':''} onClick={()=>setSettingsTab(id)}>{label}</button>)}</nav>
           <div>
             {settingsTab==='jobs'&&<Card title="Analysis jobs" actions={<Button size="sm" kind="ghost" onClick={()=>api.call('quit')}>Checkpoint jobs and quit</Button>}>
               {jobs.map(j=><div className="job" key={j.id}>
@@ -486,6 +493,7 @@ function App(){
               </div>)}
               {!jobs.length&&<Empty icon="spark">No analysis jobs yet.</Empty>}
             </Card>}
+            {settingsTab==='template'&&<CueTemplateSettings run={run}/>}
             {settingsTab==='account'&&<Card title="ChatGPT account"><Account {...accountProps}/></Card>}
             {settingsTab==='analysis'&&<>
               <Card title="Local analysis runtime" actions={<><Button size="sm" onClick={()=>run(async()=>{const r=await api.call('doctor');setDoctor(r);return r;})}>Check environment</Button><Button size="sm" onClick={()=>run(()=>api.call('worker-setup',{}),'Worker setup queued')}>Set up WSL worker</Button></>}>

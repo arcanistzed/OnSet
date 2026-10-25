@@ -1,24 +1,30 @@
-import React,{useCallback,useEffect,useState} from 'react';
+import React,{useCallback,useEffect,useRef,useState} from 'react';
 import type {Track} from './types';
 import {snapGrid,plainKey,roleColor} from './library';
 import {Button,Card,Pill} from './ui';
 import {CueAudition} from './CueAudition';
+import {nextOpenCue} from './cueTemplate';
 
-function CueRow({cue,track,selected,toggle,run,seek,play,onDirty}:any){
+function CueRow({cue,track,selected,toggle,run,seek,play,onDirty,focusCue}:any){
   const [time,setTime]=useState(String(cue.time)),[end,setEnd]=useState(cue.end===null?'':String(cue.end));
   useEffect(()=>{setTime(String(cue.time));setEnd(cue.end===null?'':String(cue.end));},[cue.time,cue.end]);
   const dirty=+time!==cue.time||(cue.end!==null&&+end!==cue.end);
   useEffect(()=>onDirty(cue.id,dirty),[cue.id,dirty,onDirty]);
   const review=(status:string,position?:number)=>run(()=>window.onset.call('review',{id:track.id,cue_id:cue.id,status,...(position===undefined?{}:{position})}));
+  // Deciding a cue from the keyboard moves straight on to the next cue still open, so a track is reviewed
+  // in one pass; the decision saves meanwhile, and a failure still shows its error.
+  const decide=(status:string)=>{const next=nextOpenCue(track.cues.map((c:any)=>c.id===cue.id?{...c,review:status}:c),cue.id);review(status);if(next)focusCue(next);};
   const save=()=>run(()=>window.onset.call('review',{id:track.id,cue_id:cue.id,status:'proposed',position:+time,...(end?{end:+end}:{})}));
   function key(e:React.KeyboardEvent){
     if((e.target as HTMLElement).matches('input,button,select,textarea'))return;
+    if(['ArrowUp','ArrowDown'].includes(e.key)&&plainKey(e)){e.preventDefault();const i=track.cues.findIndex((c:any)=>c.id===cue.id),to=track.cues[i+(e.key==='ArrowDown'?1:-1)];if(to)focusCue(to.id);return;}
+    if(e.key.toLowerCase()==='p'&&plainKey(e)){e.preventDefault();seek(e.shiftKey?Math.max(0,cue.time-4):cue.time);play();return;}
     if(!plainKey(e)&&!['ArrowLeft','ArrowRight'].includes(e.key))return;
     if(['ArrowLeft','ArrowRight'].includes(e.key)){e.preventDefault();const beats=snapGrid(track);const next=e.key==='ArrowRight';const candidates=beats.filter((t:number)=>next?t>cue.time+.001:t<cue.time-.001);const position=e.shiftKey?Math.max(0,Math.min(track.duration-.001,cue.time+(next?.1:-.1))):(next?candidates[0]:candidates.at(-1));if(position!==undefined)review('proposed',position);}
-    if(e.key.toLowerCase()==='a'&&!dirty)review('approved');
-    if(e.key.toLowerCase()==='r')review('rejected');
+    if(e.key.toLowerCase()==='a'&&!dirty)decide('approved');
+    if(e.key.toLowerCase()==='r')decide('rejected');
   }
-  return <div className="cue-row" tabIndex={0} role="group" aria-label={`Cue ${cue.role}: ${cue.name}`} onKeyDown={key}>
+  return <div className="cue-row" tabIndex={0} role="group" data-cue-id={cue.id} aria-label={`Cue ${cue.role}: ${cue.name}`} onKeyDown={key}>
     <input type="checkbox" aria-label={`Select cue ${cue.role}`} checked={selected} onChange={toggle}/>
     <CueAudition role={cue.role} time={cue.time} color={roleColor[cue.role]||'#cccccc'} seek={seek} play={play}/>
     <div className="cue-name"><strong>{cue.name}</strong><small>{cue.source} · {cue.confidence}</small></div>
@@ -43,14 +49,16 @@ export function CueReview({track,run,seek,play}:{track:Track;run:any;seek:(n:num
   const onDirty=useCallback((id:string,value:boolean)=>setDirty(previous=>previous[id]===value?previous:{...previous,[id]:value}),[]);
   useEffect(()=>{setSelected([]);setDirty({});},[track.id,track.revision]);
   const all=track.cues.length>0&&selected.length===track.cues.length;
+  const list=useRef<HTMLDivElement>(null);
+  const focusCue=useCallback((id:string)=>{list.current?.querySelector<HTMLElement>(`[data-cue-id="${id}"]`)?.focus();},[]);
   return <Card title="Cue decisions" actions={<Button size="sm" kind="ghost" icon="undo" onClick={()=>run(()=>window.onset.call('undo',{id:track.id}))}>Undo</Button>}>
     {track.cues.length>0&&<div className="bulk-bar">
       <label className="check"><input type="checkbox" checked={all} onChange={()=>setSelected(all?[]:track.cues.map(c=>c.id))}/>{selected.length?`${selected.length} selected`:'Select all'}</label>
       {['approved','rejected','proposed'].map(status=><Button key={status} size="sm" disabled={!selected.length||changed} onClick={()=>run(()=>window.onset.call('review-bulk',{id:track.id,revision:track.revision,cue_ids:selected,status}))}>{status==='approved'?'Approve':status==='rejected'?'Reject':'Reset'}</Button>)}
     </div>}
     {changed&&<p className="warning" style={{margin:'8px 0'}}>Save edited positions before approving.</p>}
-    <div className="cue-list">{track.cues.map(c=><CueRow key={c.id} cue={c} track={track} selected={selected.includes(c.id)} toggle={()=>setSelected(s=>s.includes(c.id)?s.filter(id=>id!==c.id):[...s,c.id])} run={run} seek={seek} play={play} onDirty={onDirty}/>)}</div>
+    <div className="cue-list" ref={list}>{track.cues.map(c=><CueRow key={c.id} cue={c} track={track} selected={selected.includes(c.id)} toggle={()=>setSelected(s=>s.includes(c.id)?s.filter(id=>id!==c.id):[...s,c.id])} run={run} seek={seek} play={play} onDirty={onDirty} focusCue={focusCue}/>)}</div>
     {!track.cues.length&&<p className="muted">Analyse this track to get cue proposals.</p>}
-    {track.cues.length>0&&<p className="hint" style={{marginTop:12}}>With a cue focused: <kbd>←</kbd><kbd>→</kbd> grid step · <kbd>Shift</kbd> fine step · <kbd>A</kbd> approve · <kbd>R</kbd> reject · <kbd>Space</kbd> play · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo</p>}
+    {track.cues.length>0&&<p className="hint" style={{marginTop:12}}>With a cue focused: <kbd>↑</kbd><kbd>↓</kbd> other cues · <kbd>P</kbd> play the cue (<kbd>Shift</kbd>+<kbd>P</kbd> from 4 s before) · <kbd>A</kbd> approve · <kbd>R</kbd> reject (both move on to the next open cue) · <kbd>←</kbd><kbd>→</kbd> grid step · <kbd>Shift</kbd> fine step · <kbd>Space</kbd> play · <kbd>Ctrl</kbd>+<kbd>Z</kbd> undo · <kbd>]</kbd> next track</p>}
   </Card>;
 }
