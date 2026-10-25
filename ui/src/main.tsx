@@ -26,7 +26,7 @@ import {GenreEvidence} from './GenreEvidence';
 import {RekordboxLink} from './RekordboxLink';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
-import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag} from './library';
+import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag,analysisEstimate,duration,CONFIRM_ANALYSIS_AT} from './library';
 
 const api=window.onset;
 const keyLabel=(k:any)=>typeof k==='string'?k:k?.name||'';
@@ -122,7 +122,7 @@ function App(){
   const [position,setPosition]=useState(0),[source,setSource]=useState(''),[snap,setSnap]=useState(true),[click,setClick]=useState(false),[playing,setPlaying]=useState(false);
   const [target,setTarget]=useState(''),[transitions,setTransitions]=useState<any[]>([]),[preview,setPreview]=useState<any>(null),[plans,setPlans]=useState<any[]>([]),[writePreview,setWritePreview]=useState<any>(null),[doctor,setDoctor]=useState<any>(null),[manifests,setManifests]=useState<any[]>([]);
   const [brief,setBrief]=useState<any>(()=>restoreBrief(null)),briefLoaded=useRef(false);
-  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false);
+  const [libraryFilters,setLibraryFilters]=useState({...emptyFilters}),[showFilters,setShowFilters]=useState(false),[showPaste,setShowPaste]=useState(false),[askAnalysis,setAskAnalysis]=useState<{deep:boolean}|null>(null);
   const [catalogue,setCatalogue]=useState<any[]>([]),[research,setResearch]=useState(false),[stream,setStream]=useState('');
   const [priority,setPriority]=useState<Record<string,any>>({}),[planJob,setPlanJob]=useState<string|null>(null),planJobRef=useRef<string|null>(null);
   const audio=useRef<HTMLAudioElement>(null),audioContext=useRef<AudioContext|null>(null);
@@ -191,6 +191,9 @@ function App(){
   async function replan(plan:any,keep:number){const r=await run(()=>api.call('replan',{id:plan.id,keep,brief:{...brief,track_ids:plan.brief?.track_ids||ids}}));
     if(!r)return;if(r.plans.length){setPlans(r.plans);setMessage(`Kept the first ${keep} tracks and replanned the rest`);}if(r.conflicts.length)setError(r.conflicts.join(' '));}
   function openTrack(id:string){setSelected(id);setPage('track');}
+  // Large jobs ask first: one click once queued 160 deep tracks (hours of work, gigabytes of stems).
+  function queueAnalysis(trackIds:string[],deep:boolean){setAskAnalysis(null);return run(()=>api.call('analyze',{track_ids:trackIds,deep}),deep?'Deep analysis queued':'Light analysis queued');}
+  function startAnalysis(deep:boolean){if(ids.length>CONFIRM_ANALYSIS_AT)setAskAnalysis({deep});else queueAnalysis(ids,deep);}
   const unsorted=tracks.filter(t=>matchesFilters(t,libraryFilters)&&(`${t.title} ${t.artist} ${t.genres.join(' ')} ${keyLabel(t.key)} ${canonicalKey(t.key)||''} ${t.bpm||''}`).toLowerCase().includes(query.toLowerCase())&&(filter==='all'||filter==='review'&&t.review_state!=='reviewed'||filter==='ready'&&t.analysis_state==='complete'));
   // The review view puts disagreements, stale cues and high-impact cues first.
   const filtered=filter==='review'?[...unsorted].sort((a,b)=>(priority[b.id]?.score||0)-(priority[a.id]?.score||0)):unsorted;
@@ -239,9 +242,19 @@ function App(){
         {tracks.length>0&&<div className="selection-bar">
           <span>{marked.length?<><b>{ids.length}</b> checked{hiddenSelected?` · ${hiddenSelected} hidden by filters`:''}</>:<>Analyse <b>{ids.length}</b> visible tracks</>}</span>
           {marked.length>0&&<Button kind="ghost" size="sm" onClick={()=>setMarked([])}>Clear</Button>}
-          <Button size="sm" disabled={busy||!ids.length} onClick={()=>run(()=>api.call('analyze',{track_ids:ids,deep:false}),'Light analysis queued')}>Light analysis</Button>
-          <Button size="sm" kind="primary" icon="spark" disabled={busy||!ids.length} onClick={()=>run(()=>api.call('analyze',{track_ids:ids,deep:true}),'Deep analysis queued')}>Deep analysis</Button>
+          <Button size="sm" disabled={busy||!ids.length} onClick={()=>startAnalysis(false)}>Light analysis</Button>
+          <Button size="sm" kind="primary" icon="spark" disabled={busy||!ids.length} onClick={()=>startAnalysis(true)}>Deep analysis</Button>
         </div>}
+        {askAnalysis&&(()=>{const e=analysisEstimate(tracks,ids,askAnalysis.deep),kind=askAnalysis.deep?'Deep':'Light',already=e.count-e.pending.length;
+          return <div className="write-preview" role="dialog" aria-label={`Confirm ${kind.toLowerCase()} analysis`}>
+            <h4>{kind} analysis of {e.count} tracks</h4>
+            <p className="muted">Takes {duration(e.minutes)}{askAnalysis.deep?` and about ${e.diskGb} GB of disk for stems and model results`:''}. {marked.length?'These are your checked tracks.':'Nothing is checked, so this covers every visible track.'}{already?` ${already} already ${already===1?'has':'have'} complete ${askAnalysis.deep?'deep ':''}results.`:''}</p>
+            <div className="row end" style={{marginTop:10}}>
+              <Button kind="ghost" size="sm" onClick={()=>setAskAnalysis(null)}>Cancel</Button>
+              {already>0&&e.pending.length>0&&<Button size="sm" onClick={()=>queueAnalysis(e.pending,askAnalysis.deep)}>Only the {e.pending.length} that need it</Button>}
+              <Button kind="primary" size="sm" onClick={()=>queueAnalysis(ids,askAnalysis.deep)}>Analyse all {e.count}</Button>
+            </div>
+          </div>;})()}
         <div className="table-wrap">
           {tracks.length>0&&<table>
             <thead><tr>

@@ -101,3 +101,24 @@ export const benchmarkEvents=[['first_full_groove','First full groove'],['first_
  *  cue letter plays the cue; only a drag past this moves it (and resets its approval). */
 export const DRAG_THRESHOLD_PX=4;
 export function isDrag(fromX:number,toX:number,threshold=DRAG_THRESHOLD_PX){return Math.abs(toX-fromX)>=threshold;}
+
+/** Jobs of more tracks than this ask before they start (one click once queued 160 deep tracks). */
+export const CONFIRM_ANALYSIS_AT=5;
+/** Measured on this machine (2026-10-24: four tracks in 86 min; stems as FLAC). */
+const MINUTES_PER_TRACK={light:1,deep:21},DEEP_GB_PER_TRACK=.1;
+/** True when a track has no deep results, or a deep model that did not complete. */
+export function needsDeep(track:any){
+ const models=Object.values(track?.analysis?.deep?.models||{}) as any[];
+ return !models.length||models.some(m=>m?.state!=='complete');
+}
+/** What a light or deep job over `ids` costs, and which of them still need it. */
+export function analysisEstimate(tracks:any[],ids:string[],deep:boolean){
+ const chosen=ids.map(id=>tracks.find(t=>t.id===id)).filter(Boolean);
+ const pending=chosen.filter(t=>deep?needsDeep(t):t.analysis_state!=='complete').map(t=>t.id);
+ const minutes=chosen.length*(deep?MINUTES_PER_TRACK.deep:MINUTES_PER_TRACK.light);
+ return {count:chosen.length,pending,minutes,diskGb:deep?+(chosen.length*DEEP_GB_PER_TRACK).toFixed(1):0};
+}
+export function duration(minutes:number){
+ if(minutes<60)return `about ${Math.max(1,Math.round(minutes))} min`;
+ const hours=minutes/60;return `about ${hours<10?hours.toFixed(1):Math.round(hours)} hours`;
+}
