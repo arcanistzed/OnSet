@@ -218,3 +218,24 @@ def test_set_brief_setting_roundtrips_and_is_validated(tmp_path):
     for bad in ('text',{'schema_version':2},{'loudness':1},{'smoothness':2},{'target_seconds':-1}):
         with pytest.raises(ValueError):service.settings({'key':'set_brief','value':bad})
     service.close()
+
+
+def test_invalidate_marks_only_artifacts_using_the_track_in_one_commit(tmp_path,song):
+    store=Store(tmp_path/'app');p=store.import_track(song);track=p['id']
+    store.artifact('transition','uses',{'id':'uses','track_ids':[track,'other']})
+    store.artifact('set','plan',{'id':'plan','track_ids':['other',track]})
+    store.artifact('write-preview','already',{'id':'already','track_ids':[track],'stale':True,'note':'kept'})
+    store.artifact('transition','unrelated',{'id':'unrelated','track_ids':['other','more']})
+    store.artifact('transition','mentions',{'id':'mentions','track_ids':['other'],'note':track})
+    store.artifact('cue-note','elsewhere',{'id':'elsewhere','track_ids':[track]})
+    commits=[];real=store._commit
+    store._commit=lambda:(commits.append(1),real())
+    store.invalidate(track)
+    assert len(commits)==1
+    assert store.artifact('transition','uses')['stale'] and store.artifact('set','plan')['stale']
+    assert store.artifact('write-preview','already')=={'id':'already','track_ids':[track],'stale':True,'note':'kept'}
+    for kind,key in (('transition','unrelated'),('transition','mentions'),('cue-note','elsewhere')):
+        assert 'stale' not in store.artifact(kind,key)
+    store.invalidate(track)
+    assert len(commits)==1
+    store.close()

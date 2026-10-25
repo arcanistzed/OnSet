@@ -402,12 +402,21 @@ class Store:
                 raise
 
     def invalidate(self, track_id):
+        """Marks every transition, set and write preview that uses the track stale, in one
+        commit. There are tens of thousands of transitions, so only records whose JSON
+        mentions the track's id are parsed, and those already stale are left alone."""
         with self.lock:
-            for kind in ("transition", "set", "write-preview"):
-                for a in self.artifacts(kind):
-                    if track_id in a.get("track_ids", []):
-                        a["stale"] = True
-                        self.artifact(kind, a["id"], a)
+            rows = []
+            for kind, key, record in self.db.execute(
+                    "SELECT kind,id,record FROM artifacts WHERE kind IN ('transition','set','write-preview') AND instr(record,?)>0",
+                    (canonical(track_id),)).fetchall():
+                a = json.loads(record)
+                if track_id in a.get("track_ids", []) and a.get("stale") is not True:
+                    a["stale"] = True
+                    rows.append((kind, key, canonical(a)))
+            if rows:
+                self.db.executemany("INSERT OR REPLACE INTO artifacts VALUES(?,?,?)", rows)
+                self._commit()
 
     def job(self, record):
         with self.lock:
