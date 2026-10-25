@@ -32,10 +32,11 @@ use onset_transport::source::{SourceStatus, TransportSource};
 const TICK: Duration = Duration::from_micros(1_000_000 / 120);
 
 /// Seconds the captured audio is taken to trail a deck's playhead until the hit lock has
-/// measured it.
-const EAR_LAG_S: f64 = 0.1;
-/// Hit-lock measurements needed before its lag is trusted for the ear.
-const EAR_LAG_SAMPLES: u32 = 20;
+/// measured it: the lock measured +35 ms on this laptop's output (2026-10-24).
+const EAR_LAG_S: f64 = 0.035;
+/// Hit-lock measurements needed before its lag is trusted for the ear; the measured value
+/// settles within a few bars.
+const EAR_LAG_SAMPLES: u32 = 10;
 /// Seconds a playing deck's playhead may move other than with time before the ear forgets
 /// what it heard (the waveform it compares against is no longer where it was).
 const EAR_JUMP_S: f64 = 0.5;
@@ -1822,20 +1823,25 @@ mod tests {
         let bpm = |m: &TrackMeta| m.bpm.unwrap_or(120.0);
         let script = BlendScript::bars(20.0, 16, bpm(&a));
         let end_s = script.fade_end_s() + 12.0;
+        // Into the body of the outgoing track, from the start of the incoming one.
+        let cues = [60.0, 0.0];
+        let audio = [
+            Arc::new(onset_transport::decode::decode_file(&file_a).unwrap()),
+            Arc::new(onset_transport::decode::decode_file(&file_b).unwrap()),
+        ];
         let decks = [
             BlendDeck {
-                audio: Arc::new(onset_transport::decode::decode_file(&file_a).unwrap()),
+                audio: audio[0].clone(),
                 track: TrackRef::Id(a.id),
                 bpm: bpm(&a),
-                // Into the body of the outgoing track, from the start of the incoming one.
-                cue_s: 60.0,
+                cue_s: cues[0],
                 rate: 1.0,
             },
             BlendDeck {
-                audio: Arc::new(onset_transport::decode::decode_file(&file_b).unwrap()),
+                audio: audio[1].clone(),
                 track: TrackRef::Id(b.id),
                 bpm: bpm(&b),
-                cue_s: 0.0,
+                cue_s: cues[1],
                 rate: 1.0,
             },
         ];
@@ -1844,11 +1850,75 @@ mod tests {
         let mut engine = headless_engine(library, paths, blend_source(player), epoch);
         let (followed, last) = play_blend(&mut engine, epoch, end_s);
         eprintln!("ear at the end: {:?}", last.ear);
-        let switched_s = assert_follows_the_blend(&followed, &script, 8.0);
+        // Real tracks are not equally loud at equal fader positions, so the reference is the
+        // moment deck 1 is louder in the mix than deck 0: each deck's own loudness at its
+        // playhead times its fader.
+        let louder_s = first_louder_s(&script, &audio, cues, end_s)
+            .expect("deck 1 never got louder than deck 0");
+        let switched_s = assert_follows_the_louder_deck(&followed, louder_s, 10.0);
         eprintln!(
-            "{first} -> {second}: followed deck 1 from {switched_s:.2} s (blend {:.0}-{:.0} s)",
+            "{first} -> {second}: deck 1 louder from {louder_s:.2} s, followed from {switched_s:.2} s (blend {:.0}-{:.0} s)",
             script.fade_start_s,
             script.fade_end_s()
         );
+    }
+
+    /// Loudness (RMS of all channels) of `audio` over the second ending at `at_s`.
+    fn rms_at(audio: &onset_transport::decode::DecodedAudio, at_s: f64) -> f32 {
+        let ch = usize::from(audio.channels.max(1));
+        let rate = f64::from(audio.sample_rate);
+        let end = ((at_s * rate) as usize).min(audio.frames());
+        let start = end.saturating_sub(audio.sample_rate as usize);
+        let s = &audio.samples[start * ch..end * ch];
+        if s.is_empty() {
+            return 0.0;
+        }
+        (s.iter().map(|v| v * v).sum::<f32>() / s.len() as f32).sqrt()
+    }
+
+    /// When deck 1 first becomes louder in the mix than deck 0, checked every quarter second
+    /// from the start of the fade.
+    fn first_louder_s(
+        script: &BlendScript,
+        audio: &[Arc<onset_transport::decode::DecodedAudio>; 2],
+        cues: [f64; 2],
+        end_s: f64,
+    ) -> Option<f64> {
+        let steps = ((end_s - script.fade_start_s) / 0.25).ceil().max(0.0) as u32;
+        (0..steps)
+            .map(|k| script.fade_start_s + f64::from(k) * 0.25)
+            .find(|&t| {
+                let g = script.gains(t);
+                let loud = |d: usize| g[d] * rms_at(&audio[d], cues[d] + script.played_s(d, t));
+                loud(1) > loud(0)
+            })
+    }
+
+    /// The followed deck moves from 0 to 1 once, no earlier than a second before deck 1 is
+    /// louder in the mix and within `settle_s` after, and stays there. Returns when it moved.
+    fn assert_follows_the_louder_deck(
+        followed: &[(f64, Option<u8>)],
+        louder_s: f64,
+        settle_s: f64,
+    ) -> f64 {
+        let i = followed
+            .iter()
+            .position(|(_, d)| *d == Some(1))
+            .unwrap_or_else(|| panic!("never followed deck 1: {:?}", followed.last()));
+        let switched_s = followed[i].0;
+        assert!(
+            followed[..i].iter().all(|(t, d)| *d == Some(0) || *t < 0.1),
+            "deck 0 until the switch"
+        );
+        assert!(
+            followed[i..].iter().all(|(_, d)| *d == Some(1)),
+            "deck 1 from the switch on: {:?}",
+            followed[i..].iter().find(|(_, d)| *d != Some(1))
+        );
+        assert!(
+            switched_s > louder_s - 1.0 && switched_s < louder_s + settle_s,
+            "switched at {switched_s:.1} s; deck 1 was louder from {louder_s:.1} s"
+        );
+        switched_s
     }
 }

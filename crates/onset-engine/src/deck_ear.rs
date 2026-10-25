@@ -36,6 +36,12 @@ const MASTER_PRIOR: f32 = 0.1;
 const MIN_FIT: f32 = 0.3;
 /// Coordinate-descent passes for the non-negative fit; three unknowns converge in far fewer.
 const NNLS_PASSES: usize = 40;
+/// The analyzer's levels are envelopes over roughly this much audio, while rekordbox's
+/// waveform follows every beat at 150 fps, so the expected level is the waveform averaged
+/// over this window ending at the playhead (plus lag). Point-sampling it against the
+/// smoothed levels halved the correlation on a real track.
+const EXPECT_WINDOW_S: f64 = 0.05;
+const EXPECT_TAPS: usize = 6;
 
 /// A deck the ear can listen for: its index and its track's waveform.
 pub struct EarDeck {
@@ -135,10 +141,21 @@ impl DeckEar {
         }
     }
 
+    /// The level the room should show for `deck` at `playhead_s`: its waveform averaged
+    /// over the analyzer's window ending at the playhead plus the lag.
     fn expected(&self, deck: u8, playhead_s: f64) -> Option<[f32; 3]> {
         let d = self.decks.iter().find(|d| d.deck == deck)?;
-        let at = d.bands.at(playhead_s + self.lag_s);
-        Some([at.low, at.mid, at.high])
+        let end = playhead_s + self.lag_s;
+        let mut sum = [0.0f32; 3];
+        for i in 0..EXPECT_TAPS {
+            let t = end - EXPECT_WINDOW_S * (i as f64 / (EXPECT_TAPS - 1) as f64);
+            let at = d.bands.at(t);
+            sum[0] += at.low;
+            sum[1] += at.mid;
+            sum[2] += at.high;
+        }
+        let n = EXPECT_TAPS as f32;
+        Some([sum[0] / n, sum[1] / n, sum[2] / n])
     }
 
     /// The mix the window explains, or `None` with too little listening, fewer than two
@@ -463,16 +480,18 @@ mod tests {
     #[test]
     fn a_deck_that_stops_drops_out_of_the_fit() {
         let mut ear = two_decks();
-        run(&mut ear, 0.0, 8.0, |_| 0.2, |_| 1.0, None);
-        assert_eq!(ear.current(), Some(1));
+        // Long enough for deck 1 to win even if the first verdict lands on deck 0: the
+        // switch needs it over SWITCH_SHARE for HOLD_S.
+        run(&mut ear, 0.0, 12.0, |_| 0.2, |_| 1.0, None);
+        assert_eq!(ear.current(), Some(1), "{:?}", ear.verdict());
         // Deck 1 stops: only deck 0 is playing, so the ear follows it.
-        let mut t = 8.0;
-        while t < 16.0 {
+        let mut t = 12.0;
+        while t < 20.0 {
             let e = ear.expected(0, 30.0 + t).unwrap();
             ear.listen(t, e, &[(0, 30.0 + t)]);
             t += 0.04;
         }
-        assert_eq!(ear.choose(16.0, None), Some(0));
+        assert_eq!(ear.choose(20.0, None), Some(0));
     }
 
     #[test]
