@@ -41,6 +41,44 @@ def deep_outputs_exist(deep):
     return all(path and Path(path).is_file() for path in paths)
 
 
+def model_audio_copies(features, apply=False):
+    """The deep worker's copies of a track's PCM (`<cache>/audio.wav`) left behind by runs
+    whose models all completed. Each is byte-identical to the PCM its native stage keeps,
+    and `analyse` copies that again if a model ever has to run. Reports them; removes them
+    only with `apply`. A copy without completed deep results, or whose native PCM is missing
+    or differs, is kept and listed with the reason."""
+    features = Path(features)
+    native = {}
+    for stage in (features / "native-stages").glob("*/stage.json"):
+        try:
+            native[json.loads(stage.read_text(encoding="utf-8"))["pcm_sha256"]] = stage.parent / "audio.wav"
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+    copies, kept = [], []
+    for copy in sorted(features.glob("*/audio.wav")):
+        try:
+            saved = json.loads((copy.parent / "deep-results.json").read_text(encoding="utf-8"))
+            models = saved["result"].get("models") or {}
+            if not models or any(m.get("state") != "complete" for m in models.values()) or not deep_outputs_exist(saved["result"]):
+                reason = "deep models are not all complete"
+            elif (pcm_hash := file_hash(copy)) != saved.get("pcm_sha256"):
+                reason = "deep results were made from other audio"
+            elif pcm_hash not in native or not native[pcm_hash].is_file() or file_hash(native[pcm_hash]) != pcm_hash:
+                reason = "no identical native PCM"
+            else:
+                reason = None
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            reason = "no completed deep results"
+        if reason:
+            kept.append({"path": str(copy), "reason": reason})
+        else:
+            copies.append({"path": str(copy), "bytes": copy.stat().st_size})
+    if apply:
+        for item in copies:
+            Path(item["path"]).unlink(missing_ok=True)
+    return {"copies": copies, "bytes": sum(c["bytes"] for c in copies), "kept": kept, "removed": bool(apply)}
+
+
 def bars_on_beats(result):
     beats, bars = np.asarray(result.get("beats") or []), np.asarray(result.get("downbeats") or [])
     return len(beats) > 0 and (not len(bars) or float(np.abs(beats[None, :] - bars[:, None]).min(1).max()) <= .001)
@@ -211,10 +249,11 @@ def analyse(profile, home, deep=False, checkpoint=lambda *a: None, experimental=
             "pcm_sha256":file_hash(pcm),"duration":duration,"bpm":bpm,"source":source,"tuning":tuning,
             "bar_names":list(f),"frame_names":list(frame_features)})
     # Keep deep model outputs in their versioned result folder, independently of
-    # the shared native feature stage. Copying also avoids hard-link cache damage.
+    # the shared native feature stage. The worker writes beside its input, so it gets a
+    # copy of the PCM there (copying also avoids hard-link cache damage); the copy exists
+    # only while models run, and cached deep results are matched against the native PCM.
     model_pcm = cache / "audio.wav"
-    if deep and (not model_pcm.exists() or file_hash(model_pcm)!=file_hash(pcm)):
-        shutil.copyfile(pcm,model_pcm)
+    pcm_hash = file_hash(pcm) if deep else None
     edges = np.r_[downbeats, duration]
     deep_results = {}
     if deep:
@@ -227,7 +266,7 @@ def analyse(profile, home, deep=False, checkpoint=lambda *a: None, experimental=
         if deep_cache.exists():
             try:
                 saved_deep = json.loads(deep_cache.read_text(encoding="utf-8"))
-                if (saved_deep.get("pcm_sha256") == file_hash(model_pcm) and deep_outputs_exist(saved_deep["result"])
+                if (saved_deep.get("pcm_sha256") == pcm_hash and deep_outputs_exist(saved_deep["result"])
                         and requested_models <= saved_deep["result"].get("models", {}).keys()):
                     deep_results = saved_deep["result"]
             except (OSError, ValueError, KeyError):
@@ -243,9 +282,13 @@ def analyse(profile, home, deep=False, checkpoint=lambda *a: None, experimental=
                 deep_results = {}
         if not deep_results:
             from .deep import run_deep
+            if not model_pcm.exists() or file_hash(model_pcm) != pcm_hash:
+                shutil.copyfile(pcm, model_pcm)
             deep_results = run_deep(model_pcm, home, checkpoint, experimental, settings.get("model_dir"))
             if deep_results.get("models") and all(v.get("state") == "complete" for v in deep_results["models"].values()):
-                atomic_json(deep_cache, {"schema_version": 1, "pcm_sha256": file_hash(model_pcm), "result": deep_results})
+                atomic_json(deep_cache, {"schema_version": 1, "pcm_sha256": pcm_hash, "result": deep_results})
+                # Every model is done; a later run re-creates the copy if it needs one.
+                model_pcm.unlink(missing_ok=True)
         stem_paths = deep_results.get("stems", {})
         if "vocals" in stem_paths:
             vocals, vsr = sf.read(stem_paths["vocals"], always_2d=True)

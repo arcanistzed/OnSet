@@ -22,6 +22,8 @@ def main():
     analysis.add_argument("--light", action="store_true", help="Explicitly skip local deep models")
     analysis.add_argument("--wait", action="store_true")
     analysis.add_argument("--experimental", nargs="*", choices=["edmformer", "allin1"], default=[])
+    copies = sub.add_parser("audio-copies", help="List deep-model audio copies that duplicate the native stage")
+    copies.add_argument("--apply", action="store_true", help="Remove the listed copies")
     for name in ("transitions", "plan", "validate-plan", "preview", "rekordbox-preview", "rekordbox-apply", "restore", "benchmark", "review-export", "import-plan", "rekordbox-import", "workspace-restore-preview", "workspace-restore", "replan", "review-queue", "import-workspace", "relocate-cache", "genre-suggestions"):
         cmd = sub.add_parser(name)
         cmd.add_argument("--params", help="JSON argument file")
@@ -37,6 +39,8 @@ def main():
             params = {"paths": args.paths}
         if args.command == "analyze":
             params = {"track_ids": args.track_ids, "deep": not args.light, "experimental": args.experimental}
+        if args.command == "audio-copies":
+            params = {"apply": args.apply}
         method = "export" if args.command == "review-export" else args.command
         result = service.dispatch(method, params)
         if args.command == "analyze":

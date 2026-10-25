@@ -160,3 +160,70 @@ def test_a_section_with_no_audio_frames_has_an_unknown_key():
     local=section_keys([{'start':0.,'end':9.999},{'start':9.999,'end':10.}],times,chroma,0)
     assert local[0]['state']!='unknown'
     assert local[1]['state']=='unknown' and local[1]['reason']=='Section holds no audio frames'
+
+
+def test_deep_audio_copy_lives_only_while_models_run(tmp_path,song,monkeypatch):
+    import json
+    import onset_service.deep as deep
+    from pathlib import Path
+    from onset_service.util import file_hash
+    store=Store(tmp_path/'app');p=store.import_track(song)
+    stem=tmp_path/'bass.wav';calls=[]
+    def completed(audio,*args,**kwargs):
+        calls.append(file_hash(audio));stem.write_bytes(b'fixture stem')
+        return {'models':{name:{'state':'complete','data':{}} for name in ('beat_this','demucs','essentia','genre')},'stems':{'bass':str(stem)}}
+    monkeypatch.setattr(deep,'run_deep',completed)
+    first=analyse(p,store.home,deep=True)
+    folder=Path(first['features']['path']).parent
+    native=next((store.home/'features'/'native-stages').glob('*/audio.wav'))
+    assert calls==[file_hash(native)] and not (folder/'audio.wav').exists()
+    assert json.loads((folder/'deep-results.json').read_text())['pcm_sha256']==file_hash(native)
+    # Cached deep results match the native PCM without a copy.
+    (folder/'result.json').unlink()
+    assert analyse(p,store.home,deep=True)['state']=='complete' and len(calls)==1 and not (folder/'audio.wav').exists()
+    # A model that has to run again gets a fresh copy, removed once it completes.
+    (folder/'deep-results.json').unlink();(folder/'result.json').unlink()
+    assert analyse(p,store.home,deep=True)['state']=='complete' and calls==[file_hash(native)]*2
+    assert not (folder/'audio.wav').exists()
+    store.close()
+
+
+def test_interrupted_deep_run_keeps_its_audio_copy(tmp_path,song,monkeypatch):
+    import onset_service.deep as deep
+    store=Store(tmp_path/'app');p=store.import_track(song)
+    def partial(audio,*args,**kwargs):
+        return {'models':{'beat_this':{'state':'complete','data':{}},'demucs':{'state':'failed','error':'x'}},'stems':{}}
+    monkeypatch.setattr(deep,'run_deep',partial)
+    analyse(p,store.home,deep=True)
+    assert len(list((store.home/'features').glob('*/audio.wav')))==1
+    store.close()
+
+
+def test_audio_copies_reports_then_removes_only_verified_duplicates(tmp_path,song):
+    import json,shutil
+    from onset_service.analysis import model_audio_copies
+    from onset_service.util import file_hash
+    store=Store(tmp_path/'app');p=store.import_track(song)
+    analyse(p,store.home,deep=False)
+    features=store.home/'features'
+    native=next((features/'native-stages').glob('*/audio.wav'))
+    stem=tmp_path/'bass.wav';stem.write_bytes(b'fixture stem')
+    complete={'models':{'demucs':{'state':'complete','data':{}}},'stems':{'bass':str(stem)}}
+    def legacy(name,result,audio=native):
+        folder=features/name;folder.mkdir();shutil.copyfile(audio,folder/'audio.wav')
+        if result is not None:
+            (folder/'deep-results.json').write_text(json.dumps({'pcm_sha256':file_hash(native),'result':result}))
+        return folder/'audio.wav'
+    duplicate=legacy('done',complete)
+    unfinished=legacy('partial',{'models':{'demucs':{'state':'failed'}},'stems':{}})
+    orphan=legacy('orphan',None)
+    other=tmp_path/'other.wav';other.write_bytes(native.read_bytes()[:-4]+b'\0\0\0\1')
+    changed=legacy('changed',complete,other)
+    report=model_audio_copies(features)
+    assert [c['path'] for c in report['copies']]==[str(duplicate)] and report['bytes']==native.stat().st_size
+    assert {k['path'] for k in report['kept']}=={str(unfinished),str(orphan),str(changed)} and not report['removed']
+    assert duplicate.exists()
+    applied=model_audio_copies(features,apply=True)
+    assert applied['removed'] and not duplicate.exists()
+    assert unfinished.exists() and orphan.exists() and changed.exists() and native.exists()
+    store.close()

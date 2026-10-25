@@ -234,6 +234,7 @@ class Service:
             "genre-suggestions": lambda: self.genre_suggestions(p),
             "import-workspace": lambda: self.import_workspace(p),
             "relocate-cache": lambda: self.relocate_cache(p),
+            "audio-copies": lambda: self.audio_copies(p),
             "sets": lambda: self.saved_sets(),
             "transition": lambda: self.store.artifact("transition",p["id"]),
             "validate-plan": lambda: self.validate_plan(p["plan"]),
@@ -785,6 +786,12 @@ class Service:
         if p.get("set_default"):
             self.store.setting("cache_dir", value=str(Path(p["to"])))
         return result
+
+    def audio_copies(self, p):
+        """Reports, or with `apply` removes, deep-model PCM copies that duplicate the native stage."""
+        from .analysis import model_audio_copies
+        features = Path(self.store.setting("cache_dir") or self.store.home / "features")
+        return model_audio_copies(features, apply=bool(p.get("apply")))
 
     def replan_order(self,p):
         from .transitions import options
