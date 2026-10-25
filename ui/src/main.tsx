@@ -26,7 +26,7 @@ import {GenreEvidence} from './GenreEvidence';
 import {RekordboxLink} from './RekordboxLink';
 import {Logo} from './Logo';
 import {Button,Card,Disclosure,Empty,Field,Icon,KeyValues,Pill,Segmented,Stat,Tabs,TrackPicker} from './ui';
-import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock} from './library';
+import {emptyFilters,matchesFilters,canonicalKey,analysisSelection,restoreBrief,pruneBriefTracks,snapGrid,nearest,roleColor,clock,isDrag} from './library';
 
 const api=window.onset;
 const keyLabel=(k:any)=>typeof k==='string'?k:k?.name||'';
@@ -47,9 +47,11 @@ const pages:{id:Page;label:string;icon:string}[]=[
   {id:'library',label:'Library',icon:'library'},{id:'track',label:'Track review',icon:'wave'},
   {id:'transitions',label:'Transitions',icon:'transition'},{id:'planner',label:'Set planner',icon:'set'},{id:'show',label:'Show',icon:'spark'},{id:'settings',label:'Settings',icon:'settings'}];
 
-function Timeline({track,position,onSeek,onMove,onSection,snap}:{track:Track;position:number;onSeek:(n:number)=>void;onMove:(c:Cue,n:number)=>void;onSection:(sections:any[])=>void;snap:boolean}){
-  const ref=useRef<HTMLCanvasElement>(null),drag=useRef<Cue|null>(null),sectionDrag=useRef<number|null>(null),markers=useRef<{cue:Cue;x:number;y:number}[]>([]);
-  const [width,setWidth]=useState(0);
+function Timeline({track,position,onSeek,onMove,onCue,onSection,snap}:{track:Track;position:number;onSeek:(n:number)=>void;onMove:(c:Cue,n:number)=>void;onCue:(c:Cue)=>void;onSection:(sections:any[])=>void;snap:boolean}){
+  const ref=useRef<HTMLCanvasElement>(null),drag=useRef<Cue|null>(null),sectionDrag=useRef<number|null>(null),markers=useRef<{cue:Cue;x:number;y:number}[]>([]),downX=useRef(0);
+  const [width,setWidth]=useState(0),[ghost,setGhost]=useState<number|null>(null);
+  // Esc abandons a drag in progress; the release then changes nothing.
+  useEffect(()=>{if(ghost===null)return;const cancel=(e:KeyboardEvent)=>{if(e.key==='Escape'){drag.current=null;sectionDrag.current=null;setGhost(null);}};window.addEventListener('keydown',cancel);return()=>window.removeEventListener('keydown',cancel);},[ghost]);
   useEffect(()=>{const canvas=ref.current;if(!canvas)return;const observer=new ResizeObserver(()=>setWidth(canvas.clientWidth));observer.observe(canvas);return()=>observer.disconnect();},[]);
   useEffect(()=>{
     const canvas=ref.current;if(!canvas||!canvas.clientWidth)return;
@@ -75,19 +77,28 @@ function Timeline({track,position,onSeek,onMove,onSection,snap}:{track:Track;pos
       ctx.fillStyle=color;ctx.beginPath();ctx.roundRect(labelX,y,20,20,5);ctx.fill();
       ctx.fillStyle='#0c0d10';ctx.font='700 11px "Segoe UI Variable Text","Segoe UI",system-ui';ctx.fillText(c.role,labelX+6.5,y+14);ctx.globalAlpha=1;});
     ctx.strokeStyle='#ffffff';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(played,24);ctx.lineTo(played,196);ctx.stroke();
+    if(ghost!==null){const gx=x(ghost);ctx.strokeStyle='#ffd166';ctx.lineWidth=1.5;ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(gx,24);ctx.lineTo(gx,172);ctx.stroke();ctx.setLineDash([]);
+      ctx.fillStyle='#ffd166';ctx.font='600 11px "Cascadia Mono",Consolas,monospace';ctx.fillText(clock(ghost),Math.min(Math.max(2,gx+4),width-60),40);}
     ctx.fillStyle='#71737f';ctx.font='11px "Cascadia Mono",Consolas,monospace';
     for(let i=1;i<4;i++)ctx.fillText(clock(duration*i/4,false),width*i/4-16,196);
-  },[track,position,width]);
+  },[track,position,width,ghost]);
   function time(e:React.PointerEvent<HTMLCanvasElement>){const rect=e.currentTarget.getBoundingClientRect();let t=Math.max(0,Math.min(track.duration-.001,(e.clientX-rect.left)/rect.width*track.duration));if(snap)t=nearest(snapGrid(track),t);return t;}
-  return <canvas ref={ref} className="timeline" role="img" aria-label="Waveform and draggable cue markers. Use the cue list to adjust cues with the keyboard."
-    onPointerCancel={()=>{drag.current=null;sectionDrag.current=null;}}
-    onPointerDown={e=>{drag.current=null;sectionDrag.current=null;const t=time(e);const sections=track.overrides?.sections||track.analysis?.structure?.sections||[];
+  const sectionsOf=()=>track.overrides?.sections||track.analysis?.structure?.sections||[];
+  return <canvas ref={ref} className="timeline" role="img" aria-label="Waveform with cue markers. Click a cue letter to play it, drag it to move it. Use the cue list to adjust cues with the keyboard."
+    onPointerCancel={()=>{drag.current=null;sectionDrag.current=null;setGhost(null);}}
+    onLostPointerCapture={()=>{drag.current=null;sectionDrag.current=null;setGhost(null);}}
+    onPointerDown={e=>{drag.current=null;sectionDrag.current=null;setGhost(null);downX.current=e.clientX;const t=time(e);const sections=sectionsOf();
       const boundary=sections.findIndex((v:any,i:number)=>i>0&&Math.abs(v.start-t)<track.duration/70);
       if(e.nativeEvent.offsetY<24&&boundary>0){sectionDrag.current=boundary;e.currentTarget.setPointerCapture(e.pointerId);return;}
       const near=markers.current.find(m=>e.nativeEvent.offsetX>=m.x&&e.nativeEvent.offsetX<=m.x+20&&e.nativeEvent.offsetY>=m.y&&e.nativeEvent.offsetY<=m.y+20)?.cue;
       if(near){drag.current=near;e.currentTarget.setPointerCapture(e.pointerId);}else onSeek(t);}}
-    onPointerUp={e=>{if(sectionDrag.current!==null){const i=sectionDrag.current,ss=structuredClone(track.overrides?.sections||track.analysis?.structure?.sections||[]),t=time(e);if(t>ss[i-1].start&&t<ss[i].end){ss[i-1].end=t;ss[i].start=t;onSection(ss);}sectionDrag.current=null;}
-      if(drag.current){onMove(drag.current,time(e));drag.current=null;}}}/>;
+    onPointerMove={e=>{if((drag.current||sectionDrag.current!==null)&&isDrag(downX.current,e.clientX))setGhost(time(e));}}
+    onPointerUp={e=>{const moved=isDrag(downX.current,e.clientX);setGhost(null);
+      if(sectionDrag.current!==null){const i=sectionDrag.current;sectionDrag.current=null;
+        if(moved){const ss=structuredClone(sectionsOf()),t=time(e);if(t>ss[i-1].start&&t<ss[i].end){ss[i-1].end=t;ss[i].start=t;onSection(ss);}}}
+      // A click on a cue letter plays the cue from its exact time, as the cue list's letter does (3630ea4);
+      // only a real drag moves it, which resets its approval.
+      if(drag.current){const cue=drag.current;drag.current=null;if(moved)onMove(cue,time(e));else onCue(cue);}}}/>;
 }
 
 function Spectrogram({track}:{track:Track}){
@@ -266,13 +277,13 @@ function App(){
           <select aria-label="Choose track" value={selected||''} onChange={e=>setSelected(e.target.value)}>{tracks.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}</select>
         </div>
         <Card className="wave-card">
-          <Timeline onSection={sections=>run(()=>api.call('edit',{id:track.id,changes:{sections}}),'Section boundary corrected')} track={track} position={position} onSeek={seek} snap={snap} onMove={(c,t)=>run(()=>api.call('review',{id:track.id,cue_id:c.id,status:'proposed',position:t}),'Cue moved; approve when ready')}/>
+          <Timeline onSection={sections=>run(()=>api.call('edit',{id:track.id,changes:{sections}}),'Section boundary corrected')} track={track} position={position} onSeek={seek} snap={snap} onCue={c=>{seek(c.time);audio.current?.play().catch(e=>{if(e.name!=='AbortError')setError(e.message);});}} onMove={(c,t)=>run(()=>api.call('review',{id:track.id,cue_id:c.id,status:'proposed',position:t}),'Cue moved; approve when ready')}/>
           <div className="transport">
             <Button kind="primary" className="play-btn" icon={playing?'pause':'play'} label={playing?'Pause':'Play'} onClick={togglePlay}/>
             <span className="time">{clock(position)} / {clock(track.duration)}</span>
             <label className="check"><input type="checkbox" checked={snap} onChange={e=>setSnap(e.target.checked)}/>Snap to beats</label>
             <label className="check"><input type="checkbox" checked={click} onChange={e=>setClick(e.target.checked)}/>Click track</label>
-            <span className="hint spacer">Drag a cue letter to move it · drag a section edge to correct it</span>
+            <span className="hint spacer">Click a cue letter to play it · drag it to move it · drag a section edge to correct it · <kbd>Esc</kbd> cancels a drag</span>
           </div>
           <audio ref={audio} src={source} onTimeUpdate={tick} onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)} onEnded={()=>setPlaying(false)}/>
         </Card>

@@ -96,3 +96,8 @@ export function barAt(track:any,seconds:number):number|null{
 }
 
 export const benchmarkEvents=[['first_full_groove','First full groove'],['first_breakdown','First breakdown'],['later_drop','Later drop'],['outro','Outro']] as const;
+
+/** Pointer travel (px) below which a press on the waveform is a click, not a drag. A click on a
+ *  cue letter plays the cue; only a drag past this moves it (and resets its approval). */
+export const DRAG_THRESHOLD_PX=4;
+export function isDrag(fromX:number,toX:number,threshold=DRAG_THRESHOLD_PX){return Math.abs(toX-fromX)>=threshold;}
