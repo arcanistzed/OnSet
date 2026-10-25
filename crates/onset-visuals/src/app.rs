@@ -90,6 +90,23 @@ pub struct OnsetApp {
     /// Where the one requested screenshot goes; taken out once it is written.
     screenshot_pending: Option<PathBuf>,
     lyrics: crate::lyrics::LyricsWorker,
+    /// No frame could be drawn (minimised, occluded or a timed-out surface); the next try
+    /// waits until then instead of spinning the loop.
+    retry_at: Option<Instant>,
+}
+
+/// How long the loop sleeps before trying again when it cannot draw a frame.
+const RETRY: Duration = Duration::from_millis(100);
+
+/// The control flow after a pass of the loop, and whether to ask for a redraw now: frames
+/// are drawn back to back (paced by the present), but a frame that could not be drawn is
+/// retried only once `retry_at` has passed.
+fn next_flow(retry_at: Option<Instant>, now: Instant) -> (ControlFlow, bool) {
+    match retry_at {
+        Some(at) if now < at => (ControlFlow::WaitUntil(at), false),
+        Some(_) => (ControlFlow::Poll, true),
+        None => (ControlFlow::Poll, false),
+    }
 }
 
 fn monitor_infos(event_loop: &ActiveEventLoop) -> (Vec<MonitorHandle>, Vec<MonitorInfo>) {
@@ -334,6 +351,7 @@ impl OnsetApp {
             exiting: false,
             screenshot_pending,
             lyrics: crate::lyrics::LyricsWorker::spawn(&opts_cache_dir.join("lyrics")),
+            retry_at: None,
         }
     }
 
@@ -500,15 +518,19 @@ impl OnsetApp {
         self.last_frame = Some(now);
     }
 
-    fn render(&mut self) {
+    /// Draws and presents one frame; false when none could be drawn.
+    fn render(&mut self) -> bool {
         let Some(s) = self.surface.as_mut() else {
-            return;
+            return false;
         };
+        if s.window.is_minimized() == Some(true) {
+            return false;
+        }
         if let Some(w) = s.watcher.as_mut() {
             s.renderer.poll_hot_reload(&s.gpu, w, &shader_dir());
         }
         let Some((frame, reconfigure)) = acquire_frame(s) else {
-            return;
+            return false;
         };
         let view = frame
             .texture
@@ -564,6 +586,7 @@ impl OnsetApp {
             );
         }
         self.record_frame(&ms);
+        true
     }
 
     /// A second before exit, or three seconds in when the run is open-ended.
@@ -828,9 +851,13 @@ impl ApplicationHandler<ShowMessage> for OnsetApp {
                 }
             }
             WindowEvent::RedrawRequested => {
-                self.render();
-                if let Some(s) = &self.surface {
-                    s.window.request_redraw();
+                if self.render() {
+                    self.retry_at = None;
+                    if let Some(s) = &self.surface {
+                        s.window.request_redraw();
+                    }
+                } else {
+                    self.retry_at = Some(Instant::now() + RETRY);
                 }
             }
             _ => {}
@@ -906,7 +933,32 @@ impl ApplicationHandler<ShowMessage> for OnsetApp {
             }
             event_loop.exit();
         }
-        event_loop.set_control_flow(ControlFlow::Poll);
+        let (flow, redraw) = next_flow(self.retry_at, Instant::now());
+        if redraw {
+            self.retry_at = None;
+            if let Some(s) = &self.surface {
+                s.window.request_redraw();
+            }
+        }
+        event_loop.set_control_flow(flow);
+    }
+}
+
+#[cfg(test)]
+mod frame_loop_tests {
+    use super::*;
+
+    #[test]
+    fn drawing_keeps_polling_without_an_extra_redraw() {
+        assert_eq!(next_flow(None, Instant::now()), (ControlFlow::Poll, false));
+    }
+
+    #[test]
+    fn a_frame_that_could_not_be_drawn_waits_before_the_next_try() {
+        let now = Instant::now();
+        let at = now + RETRY;
+        assert_eq!(next_flow(Some(at), now), (ControlFlow::WaitUntil(at), false));
+        assert_eq!(next_flow(Some(at), at), (ControlFlow::Poll, true));
     }
 }
 
