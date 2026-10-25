@@ -231,6 +231,7 @@ class Service:
             "transitions-job": lambda: self.enqueue("transitions", {**p, "deep": False}),
             "replan": lambda: self.replan(p),
             "review-queue": lambda: self.review_queue(p),
+            "gig-readiness": lambda: self.gig_readiness(p),
             "genre-suggestions": lambda: self.genre_suggestions(p),
             "import-workspace": lambda: self.import_workspace(p),
             "relocate-cache": lambda: self.relocate_cache(p),
@@ -736,6 +737,19 @@ class Service:
         from .review import queue
         return queue(self.store.tracks(), self.store.setting("source_reliability", {}), self.store.artifacts("set"),
                      bool(p.get("include_done")))
+
+    def gig_readiness(self, p):
+        """Read-only check of a selection, rekordbox playlist or saved set before a gig."""
+        from .readiness import check
+        ids = p.get("track_ids")
+        if ids is not None and (not isinstance(ids, list) or not all(isinstance(i, str) for i in ids)):
+            raise ValueError("track_ids must be a list of track IDs")
+        plan = None
+        if p.get("set_id"):
+            plan = self.store.artifact("set", p["set_id"])
+            if plan is None:
+                raise ValueError("Unknown saved set: " + str(p["set_id"]))
+        return check(self.store.tracks(), ids, p.get("playlist"), plan, bool(p.get("verify_audio")))
 
     def import_workspace(self, p):
         """Import a workspace JSON or SQLite export from another machine with folder remapping."""
