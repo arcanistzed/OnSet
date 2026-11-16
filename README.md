@@ -220,9 +220,19 @@ app) or in `ONSET_OFFSETS`, where the live view reads it; a calibration it repla
 kept as `<version>.toml.bak-<time>`, and the live view reconnects with the new one at once.
 Cancelling or a failed run saves nothing.
 
-OnSet does not write to rekordbox's database, analysis files or process memory. It
-creates its own config and caches, including a decrypted copy of the library database.
-Use `onset --config-path` to find the settings file.
+Live monitoring is read-only. While the show runs, OnSet reads rekordbox's process memory,
+library database and analysis files but never writes to them. It creates its own config
+and caches, including a decrypted copy of the library database. Use `onset --config-path`
+to find the settings file.
+
+The separate [preparation workflow](docs/PREPARATION.md) can write to rekordbox's library
+database, but only changes you approve: cues, hot-cue pad moves, comments and playlists.
+Each write starts from an exact change preview, requires rekordbox to be closed, is
+rechecked against that preview and is applied only after a consistent backup. Every write
+is recorded in a manifest that **Write history & recovery** can restore from, and writes
+are refused while a show is running. Try writes on a small test collection first;
+real-app write and restore checks are still open (see the
+[Windows runbook](docs/WINDOWS_RUNBOOK.md#preview-and-apply-rekordbox-changes)).
 
 Online lyrics lookup sends track metadata to LRCLIB and, when needed, an ISRC to
 MusicBrainz. Disable online lookup in the lyrics settings to use cached lyrics only.
