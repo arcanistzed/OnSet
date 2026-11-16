@@ -1,5 +1,7 @@
 # OnSet continuation, 2026-10-24
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 The Claude session logs were read to recover the interrupted work. Their last outstanding machine-work sequence was: package the local `merge-autocue` tip, install it, then deep-analyse La Danza, Ray Of Solar, Lock In and Carl Cox & Perry Farrell - Joya (Radio Edit). Keep the branch local until the user decides whether to push. Listening, cue approvals, real-deck checks and the particle branch remain separate decisions.
 
 ## Source and checks

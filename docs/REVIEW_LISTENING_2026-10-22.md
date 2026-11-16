@@ -1,5 +1,7 @@
 # Review: listening — La Danza's drop, analysis labels and transitions
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 Listening checks that no code can close: where La Danza's drop really is (its cues stay
 unapproved until then), verified analysis labels for the M3/V2 benchmark, and whether the
 planned transitions work (M4). Part 4 combines a live run of the test set with the visual

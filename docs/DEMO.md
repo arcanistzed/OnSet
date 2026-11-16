@@ -1,5 +1,7 @@
 # OnSet demo
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 A ten-minute walkthrough of OnSet with rekordbox: preparation in the app, then the live link and the full-screen visuals. Every step below was run on 2026-10-20 with the installed app, rekordbox 7.2.19 and the demo crate; what each step showed is noted in *italics*. The visuals steps were rechecked on 2026-10-23 against the installed aa791f3 build, where the show runs inside the app.
 
 ## Before the audience arrives

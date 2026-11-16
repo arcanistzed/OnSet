@@ -1,8 +1,10 @@
 # OnSet desktop operation
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 OnSet's desktop app (`crates/onset-desktop`, Tauri) holds the preparation screens and the live view in one window. It starts the Python service in `service/` as a child process and serves the React screens built from `ui/`. Automated engineering checks pass; musical accuracy and real rekordbox acceptance are separate release gates. See [implementation status](IMPLEMENTATION_STATUS.md).
 
-Installed startup/build instructions reviewed 2026-10-24. The older checks in [desktop verification](history/DESKTOP_VERIFICATION.md) belong to their dated builds. Current Tauri candidate `abec26f` has its own [installed-payload and workspace-preservation evidence](CONTINUATION_2026-10-24.md); this does not imply broader production acceptance.
+Installed startup/build instructions reviewed 2026-10-24. The older checks in [desktop verification](history/DESKTOP_VERIFICATION.md) belong to their dated builds. The last installed Tauri candidate, `abec26f` (2026-10-24), has its own [installed-payload and workspace-preservation evidence](CONTINUATION_2026-10-24.md); this does not imply broader production acceptance.
 
 Development continuation: [agent handoff](HANDOFF.md), [complete plan](PROJECT_PLAN.md), [progress map](PLAN_PROGRESS.md).
 

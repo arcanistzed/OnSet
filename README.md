@@ -30,7 +30,9 @@ the scenes, or take control while you play.
 
 **Pre-alpha.** Previously tested with rekordbox 7.2.18 and 7.2.19 on Windows 11, an
 RTX 3050 Ti and a DDJ-FLX10. Other rekordbox versions need local calibration. Test your
-setup before using OnSet at a show.
+setup before using OnSet at a show. The dated test records in `docs/` apply only to the
+builds they name; see [verification scope](docs/PREPARATION.md#verification-scope) for
+what has and has not been checked on the current code.
 
 ## What you can do
 

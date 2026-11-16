@@ -1,5 +1,7 @@
 # Review: beat-locked hits, structure in every scene, replay and particles
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 What to run and what to look for, in order. Parts 1–3 are on `merge-autocue` (commits
 `9e4d9be`, `527523b`). Parts 4–5 are on their own branches and are tested in their own
 worktrees, so nothing is merged until you decide. Every automated block says what "pass"

@@ -1,5 +1,7 @@
 # Plan-to-implementation map
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 2026-10-24 release follow-up: [continuation evidence](CONTINUATION_2026-10-24.md) records installed abec26f, exact workspace preservation, current UI/worker checks and all six models completing on four real tracks. Listening, cue approval and broader acceptance remain open; no product milestone is closed by model execution alone.
 
 P5.2 listening-review follow-up: coloured cue buttons now seek to the exact cue in source; a separate **−4s** control preserves lead-in audition. UI tests (39), production build and candidate 3630ea4 installer packaging pass. Installation/visible acceptance remain pending; see the continuation record.

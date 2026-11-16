@@ -1,10 +1,12 @@
 # Windows runbook
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 Installed launch/update instructions reviewed 2026-10-24. See [desktop operation](DESKTOP.md) for source setup, [current installed evidence](CONTINUATION_2026-10-24.md) for build identity and preservation checks, and [implementation status](IMPLEMENTATION_STATUS.md) for incomplete production gates. The September runbook is [archived separately](history/LEGACY_WINDOWS_RUNBOOK.md).
 
 ## Start or update
 
-On this computer, the **OnSet** Start menu and desktop shortcuts run `%LOCALAPPDATA%\OnSet\onset-desktop.exe`. The per-user installer bundles its own `runtime\python.exe`, `service\` and `offsets\`; the installed app does not need the development checkout. The installed candidate is `abec26f`, packaged as `OnSet_0.0.1_x64-setup.exe`. Launch from the shortcut or Explorer so Windows AppData virtualization does not select a different workspace. `bin\OnSet.exe` is an older development build and is not the installed shortcut target.
+On this computer, the **OnSet** Start menu and desktop shortcuts run `%LOCALAPPDATA%\OnSet\onset-desktop.exe`. The per-user installer bundles its own `runtime\python.exe`, `service\` and `offsets\`; the installed app does not need the development checkout. As of 2026-10-24 the installed candidate is `abec26f`, packaged as `OnSet_0.0.1_x64-setup.exe`; the later `3630ea4` installer (cue-audition seek fix) was built but not installed. Launch from the shortcut or Explorer so Windows AppData virtualization does not select a different workspace. `bin\OnSet.exe` is an older development build and is not the installed shortcut target.
 
 For a source update, use `scripts/package-desktop.ps1` from a clean, short-path checkout with the service runtime prepared. Quit the running app through **Settings → Jobs → Checkpoint jobs and quit** before replacing it. Keep a full-history export and compare it after the upgrade; the 2026-10-24 native before/after exports matched all seven tables exactly.
 

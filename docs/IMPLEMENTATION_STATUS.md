@@ -1,5 +1,7 @@
 # OnSet preparation: implementation status
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](PREPARATION.md#verification-scope).
+
 The preparation side of OnSet (version 0.2.0 of the former standalone app) is an engineering candidate. Its screens run in OnSet's Tauri desktop app. The [2026-10-24 continuation](CONTINUATION_2026-10-24.md) records installed Tauri candidate `abec26f`, its payload checks and exact workspace-preservation comparison. The older installer results below remain scoped to their dated builds. The full requested plan is not yet fully verified for personal production. Generated fixtures establish software behavior; they do not establish musical accuracy or mixer equivalence.
 
 The aggregate results below were reviewed 2026-10-19 against the then-current quality report, package manifest, workspace comparison and source. The separately scoped 2026-10-24 installed/model checks are linked above. Evidence is specific to the measured source, machine and inputs.
@@ -22,7 +24,7 @@ The complete specification is [PROJECT_PLAN.md](PROJECT_PLAN.md); [PLAN_PROGRESS
 | ChatGPT | OAuth/PKCE, Windows-protected main-process credentials, account/model selection, completed-event streaming, sourced enrichment and rejected-invalid-plan replacement suggestions |
 | Recovery | Owned process cancellation, resumable native-feature stages, queue deduplication, explicit unavailable-model evidence, workspace health guards, consistent snapshots and exact restoration preview, full SQLite history export, checkpoint/quit and recoverable interface errors |
 
-## Current engineering evidence (2026-10-19)
+## Engineering evidence recorded 2026-10-19
 
 - 93 Python regression tests pass (zero failures; one librosa empty-pitch tuning warning on the silent fixture), including generated audio, encrypted/plain database snapshots, exact loops, cue preservation/deletions, adoption, restore, process cancellation, immutable resources, stale set validation, shutdown pause versus explicit cancellation, queue deduplication, native-stage recovery, workspace snapshots/restore and benchmark metrics.
 - 26 desktop tests pass. Tests include locally signed account tokens, PKCE/nonces, refresh/account switching, cancelled sign-in, malformed/interrupted streams, key normalization and missing-evidence filtering, filtered analysis selection, cited Apple song identity and bounded service shutdown. These automated protocol tests use synthetic credentials; separate real-account acceptance is described below.

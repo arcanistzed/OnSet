@@ -1,5 +1,7 @@
 # Desktop verification — 18–19 October 2026
 
+> **Verification scope.** Results and checks in this document apply only to the build and date they name, not necessarily to the final tip of this branch. A packaged build was not necessarily installed or accepted. See [verification scope](../PREPARATION.md#verification-scope).
+
 > Recorded before the preparation app became part of OnSet, when it was a separate app called Autocue. Installer, executable, folder and script names below are from that time; current names are in [desktop operation](../DESKTOP.md).
 
 ## Current acceptance summary (2026-10-19)
