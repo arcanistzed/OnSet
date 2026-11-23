@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use super::chain::Chain;
 use super::deck_track::DeckTrack;
-use super::offsets::{DeckSignature, Offsets, PositionFormat};
+use super::offsets::{DeckSignature, MasterLink, Offsets, PositionFormat};
 
 /// Longest text block read for track info and paths.
 const TEXT_MAX: usize = 512;
@@ -498,6 +498,9 @@ impl<M: Mem> ChainReader<M> {
 
     pub fn master_deck(&self) -> Option<u8> {
         if let Some(sig) = self.offsets.signature.as_ref() {
+            if let Some(m) = sig.master_link.and_then(|link| self.linked_master(link)) {
+                return Some(m);
+            }
             let flag = sig.master_flag.as_ref()?;
             return self
                 .found
@@ -513,6 +516,43 @@ impl<M: Mem> ChainReader<M> {
         let addr = resolve_chain(&self.mem, chain)?;
         let v = self.mem.read_u8(addr).ok()?;
         (usize::from(v) < self.offsets.decks.len().max(1)).then_some(v)
+    }
+
+    /// The deck the other decks point to as MASTER. Every deck that names one must name the
+    /// same found deck, and that deck must not name another; otherwise `None`.
+    fn linked_master(&self, link: MasterLink) -> Option<u8> {
+        let mut named = None;
+        for (i, pos) in self.found.iter().enumerate() {
+            let target = pos
+                .checked_add_signed(link.object_offset)
+                .and_then(|a| self.mem.read_u64(a).ok())
+                .filter(|p| *p != 0)
+                .and_then(|p| p.checked_add_signed(link.target_offset))
+                .and_then(|a| self.mem.read_u64(a).ok())
+                .unwrap_or(0);
+            if target == 0 {
+                continue;
+            }
+            let j = self
+                .found
+                .iter()
+                .position(|q| q.checked_add_signed(link.deck_offset) == Some(target))?;
+            if j == i || named.is_some_and(|n| n != j) {
+                return None;
+            }
+            named = Some(j);
+        }
+        let m = named?;
+        // MASTER itself names no deck.
+        let own = self.found[m]
+            .checked_add_signed(link.object_offset)
+            .and_then(|a| self.mem.read_u64(a).ok())
+            .and_then(|p| p.checked_add_signed(link.target_offset))
+            .and_then(|a| self.mem.read_u64(a).ok());
+        if own.is_some_and(|t| t != 0) {
+            return None;
+        }
+        u8::try_from(m).ok()
     }
 
     fn read_text(&self, chain: &Chain) -> Option<String> {

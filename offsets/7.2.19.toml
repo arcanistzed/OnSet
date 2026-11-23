@@ -47,6 +47,17 @@ module_offset = 92088496
 offset = -396
 mask = 1
 
+[signature.master_link]
+# Read before `master_flag`. On 2026-11-23 (decks 1 and 2 loaded with 10:35 and Abyss,
+# both stopped) each deck's start + 0x118 led to an object whose pointer at +0x10 pointed
+# to the MASTER deck's start + 0x120 on the other deck and was 0 on MASTER. It followed
+# four presses of MASTER both ways, and read right in two later launches, stopped and with
+# both decks playing under SYNC. Not yet seen with decks 3 and 4 loaded or with MASTER
+# moved during playback; the reader trusts it only when the decks agree.
+object_offset = -140
+target_offset = 16
+deck_offset = -132
+
 # Withdrawn: static routes to MASTER (59a860a; the reader for them was removed after). On
 # 2026-10-22 one rekordbox session kept a
 # per-deck MASTER byte at +0x1b8 in entries 0x370 apart, reached from static memory, and

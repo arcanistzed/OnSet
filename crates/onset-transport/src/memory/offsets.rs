@@ -50,6 +50,19 @@ pub struct FlagField {
     pub mask: u8,
 }
 
+/// How a deck names the MASTER deck: each deck object leads to a sub-object whose pointer
+/// at `target_offset` points into the MASTER deck (at its position field plus
+/// `deck_offset`) on every deck but MASTER, and is zero on MASTER itself.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MasterLink {
+    /// Where the pointer to the sub-object sits, relative to the deck's position field.
+    pub object_offset: i64,
+    /// Where the sub-object holds its pointer to the MASTER deck.
+    pub target_offset: i64,
+    /// Where that pointer lands in the MASTER deck, relative to its position field.
+    pub deck_offset: i64,
+}
+
 /// rekordbox's list of its decks: consecutive pointers to each deck object, in deck order.
 /// The signature finds the deck objects in address order, which after a restart need not
 /// be deck order; the list says which object is deck 1, deck 2 and so on.
@@ -93,6 +106,10 @@ pub struct DeckSignature {
     /// Set on the deck that is MASTER, when known.
     #[serde(default)]
     pub master_flag: Option<FlagField>,
+    /// The pointer by which the other decks name MASTER, when known; read before
+    /// `master_flag`.
+    #[serde(default)]
+    pub master_link: Option<MasterLink>,
     /// The deck's tempo, when known.
     #[serde(default)]
     pub tempo: Option<TempoFields>,

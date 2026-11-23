@@ -25,6 +25,19 @@ fn rekordbox_7_2_19_knows_the_master_deck() {
 }
 
 #[test]
+fn rekordbox_7_2_19_knows_how_decks_name_master() {
+    let o = Offsets::for_version(&shipped(), "7.2.19").expect("7.2.19");
+    let link = o
+        .signature
+        .and_then(|s| s.master_link)
+        .expect("master link");
+    assert_eq!(
+        (link.object_offset, link.target_offset, link.deck_offset),
+        (-140, 16, -132)
+    );
+}
+
+#[test]
 fn rekordbox_7_2_19_knows_its_deck_list() {
     let o = Offsets::for_version(&shipped(), "7.2.19").expect("7.2.19");
     let list = o.signature.and_then(|s| s.deck_list).expect("deck list");

@@ -7,7 +7,7 @@ use onset_transport::memory::chain::Chain;
 use std::path::{Path, PathBuf};
 
 use onset_transport::memory::offsets::{
-    Anchor, DeckChains, DeckSignature, FlagField, Offsets, PositionFormat, TempoFields,
+    Anchor, DeckChains, DeckSignature, FlagField, MasterLink, Offsets, PositionFormat, TempoFields,
     TrackIdFields,
 };
 use onset_transport::memory::reader::{
@@ -358,6 +358,7 @@ fn signature_rekordbox() -> (FakeMem, DeckSignature) {
             offset: -0x328,
             mask: 0x80,
         }),
+        master_link: None,
         tempo: None,
         deck_list: None,
         track_id: None,
@@ -424,6 +425,67 @@ fn reader_reads_signature_decks_without_chains() {
         Some(1),
         "the flag byte names the master"
     );
+}
+
+/// On 2026-11-23 (rekordbox 7.2.19, decks 1 and 2 loaded, both stopped) each deck object
+/// led through +0x118 from its start to a sub-object whose pointer at +0x10 pointed into
+/// the MASTER deck (its start + 0x120) on the other deck, and was zero on MASTER. It
+/// followed four presses of MASTER in both directions.
+fn master_link_decks(master: usize) -> ChainReader<FakeMem> {
+    let (mut mem, mut sig) = signature_rekordbox();
+    // Start is 420 bytes below the position field; the link is relative to the position.
+    let link = MasterLink {
+        object_offset: -420 + 0x118,
+        target_offset: 0x10,
+        deck_offset: -420 + 0x120,
+    };
+    sig.master_flag = None;
+    sig.master_link = Some(link);
+    let decks = [0x7000u64, 0x9000];
+    for (i, pos) in decks.iter().enumerate() {
+        let sub = 0x20_000 + 0x1000 * i as u64;
+        mem.put_u64(pos - 420 + 0x118, sub);
+        let target = if i == master {
+            0
+        } else {
+            decks[master] - 420 + 0x120
+        };
+        mem.put_u64(sub + 0x10, target);
+    }
+    let offsets = Offsets {
+        rekordbox_version: "7.2.19".into(),
+        platform: "windows".into(),
+        position_format: PositionFormat::I32,
+        position_rate_hz: 44_100.0,
+        master_deck: None,
+        decks: Vec::new(),
+        signature: Some(sig),
+        provenance: None,
+    };
+    assert_eq!(
+        Offsets::from_toml(&offsets.to_toml().unwrap()).unwrap(),
+        offsets
+    );
+    let mut reader = ChainReader::new(mem, offsets);
+    assert_eq!(reader.adopt_hits(&[0x9000 - 0x20, 0x7000 - 0x20]), 2);
+    reader
+}
+
+#[test]
+fn the_other_decks_point_at_master() {
+    assert_eq!(master_link_decks(0).master_deck(), Some(0));
+    assert_eq!(master_link_decks(1).master_deck(), Some(1));
+}
+
+#[test]
+fn a_master_link_that_names_no_found_deck_is_not_trusted() {
+    let mut reader = master_link_decks(0);
+    // Deck 2's sub-object now points somewhere that is no deck.
+    let mut mem = reader.mem().clone();
+    mem.put_u64(0x20_000 + 0x1000 + 0x10, 0x4444);
+    reader = ChainReader::new(mem, reader.offsets().clone());
+    reader.adopt_hits(&[0x9000 - 0x20, 0x7000 - 0x20]);
+    assert_eq!(reader.master_deck(), None, "no flag to fall back to either");
 }
 
 /// On 2026-10-23, after rekordbox restarted, its decks 1 to 4 sat at deck objects 4, 1, 3
