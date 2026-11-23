@@ -52,8 +52,9 @@ mask = 1
 # both stopped) each deck's start + 0x118 led to an object whose pointer at +0x10 pointed
 # to the MASTER deck's start + 0x120 on the other deck and was 0 on MASTER. It followed
 # four presses of MASTER both ways, and read right in two later launches, stopped and with
-# both decks playing under SYNC. Not yet seen with decks 3 and 4 loaded or with MASTER
-# moved during playback; the reader trusts it only when the decks agree.
+# both decks playing under SYNC, after MASTER passed to a playing deck, and with all four
+# decks loaded (the other three all pointed to MASTER). The reader trusts it only when the
+# decks agree.
 object_offset = -140
 target_offset = 16
 deck_offset = -132
