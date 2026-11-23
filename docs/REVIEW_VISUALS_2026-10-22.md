@@ -141,6 +141,35 @@ the kick obvious).
 - Watch the kick with your eyes against the music: it should land *on* the beat, not just
   after it. If it lands early, the lag number is the amount to compensate elsewhere.
 
+**Observed 2026-11-23** (installed `6d75474`, rekordbox 7.2.19, show windowed and maximised
+on the laptop panel at 2256×1380, Medium, Festival style, Signal scope on; HUD read by
+screenshots during the session with Daniel at the laptop):
+
+- 44.1 kHz track (Tiësto – Adagio For Strings, MP3, 154.95 BPM): HUD 154.6–155.5 BPM,
+  `locked to the grid`, kick confidence 0.99–1.00, snare 0.94–1.00. Audio lag **+71 to
+  +82 ms** over 729–910 kicks, steady. That is about twice the simulator's +35 ms and under
+  the 150 ms "something else in the path" mark.
+- The lag does not survive a jump: rekordbox was looping a 32-beat intro region; after the
+  loop was exited (slip return) the figure moved to −107..−120 ms over 1769–1813 kicks and
+  later read +2 ms over 3048 kicks, with confidence still 1.00. The running figure mixes
+  kicks from before and after a seek.
+- **48 kHz track (Anyma – Abyss, FLAC, rekordbox 128.00 BPM at 0.0 %): wrong rate.** HUD
+  read 117.4–117.9 BPM and its clock ran about 8 % slow (HUD 01:08.7 while rekordbox showed
+  01:17.3 a few seconds later); 128 / 117.6 = 48000 / 44100. The lag wandered (+21, −16,
+  +85, +34, −21, −18 ms over 150–321 kicks) and kick confidence fell as low as 0.18.
+  Points at the deck's sample rate in `crates/onset-transport/src/memory/deck_track.rs`
+  (`sample_rate`, falling back to the probe) and `reader.rs` (`set_deck_track`). The same
+  session's Library page showed **0 tracks** although `workspace-state.json` counts 160,
+  so the catalogue that would supply the rate may not be loading.
+- Low EQ cut (8 bars): not settled. A mouse drag on rekordbox's deck 2 LOW knob could not be
+  confirmed to cut the bass and kick confidence stayed at 1.00 through a breakdown; to be
+  repeated on the controller.
+- Kick on time by eye and ear: not yet judged.
+- Launch note: OnSet started from inside the Claude desktop app (an MSIX package) sees a
+  virtualised AppData, finds no service beside the executable and stops with "The Python
+  service's runtime is missing" (`crates/onset-desktop/src/sidecar.rs`, `locate_in`).
+  Started normally (a one-off scheduled task) it runs as installed.
+
 ### 4b. Structure in every scene
 
 Play a track with a clear breakdown and drop, in Auto or any scene.
@@ -149,6 +178,23 @@ Play a track with a clear breakdown and drop, in Auto or any scene.
   including the classics (Warp, Cells, Pulse, Ring), which never handled intensity
   themselves.
 - Judge the size of the step. Too subtle or too much → the two constants named in part 3.
+
+**Observed 2026-11-23**, Daniel watching the show in Festival style with Auto scenes:
+"it keeps bringing in different visual elements and overlaying them to an extent that is
+probably not ideal. And some of it looks a bit like buggy, and like there's either like too
+much going on, or it's like some of it's cut off, or it's just not as focused and refined in
+terms of the visuals as it used to be." He wants it compared with the old version and made
+more focused and impressive as a light show.
+
+- Seen in the captures: the synthwave grid and sun laid over the zero-g cubes with a band of
+  purple bars and sparks on top in one frame; in zero-g a cube near the camera fills the
+  centre as a flat teal slab.
+- Festival's settings at the time: reactivity 135 %, camera shake 40 %, overlay pulse 90 %,
+  build-ups 100 %, phrase slides 85 %, flashes 70 %, glow 70 %, trails 40 %, sparks 80 %,
+  colour changes 90 %, inversions 50 %, glitches 40 %, randomness 65 %, film grain 15 %.
+- The size of the breakdown/drop swing alone was not judged; the overall busyness comes
+  first. The comparison with an older build and the refinement run in their own session
+  ("Compare show visuals with the old version and refine them").
 
 ### 4c. Nothing regressed
 
@@ -217,6 +263,14 @@ cd /c/Users/water/Projects/OnSet/.claude/worktrees/kind-shamir-4b8d38 && CARGO_T
   quality. On the Iris Xe at Medium the baseline was ~52 fps; more than a few ms lost
   means the pool or the update cost needs trimming at that quality.
 - Low quality should visibly use fewer particles.
+
+**Observed 2026-11-23** (installed `6d75474`, where the layer is merged; Medium, 2256×1380
+window on the laptop panel, adaptive resolution holding 60 %, Adagio For Strings playing):
+HUD `frame` with Particles on read 9.6–42.8 ms, p99 42.2–49.5 ms; off, 7.6–39.2 ms, p99
+39.2–43.6 ms. The cost is about 3–5 ms at p99; per-frame readings are too noisy to say
+more. The sparks are part of what Daniel called "too much going on" (4b). Whether kicks,
+snares and drops throw them as designed was not judged separately. Particles were left
+**off** after this check.
 
 The worktrees belong to their sessions; archiving a session in the app removes its
 worktree once its branch is merged or discarded.
