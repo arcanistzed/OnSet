@@ -204,6 +204,22 @@ more focused and impressive as a light show.
 - Edit `assets/shaders/lasers.wgsl` while the show runs (change a number): hot reload still
   applies it.
 
+**Observed 2026-11-23** (installed `6d75474`, fullscreen on the laptop panel at 2256×1504,
+OnSet linked to rekordbox but "connected, no track" after rekordbox had been restarted):
+every scene loaded with the arrow keys and none showed a red HUD line: cover, pulse, ring,
+warp, voronoi, tunnel, synthwave, ribbons, kaleido, lasers, nebula, zero-g, crystal and
+liquid (tunnel was seen earlier in the session, while a track was playing). Frame time with
+no track was 15–28 ms (p99 19–48 ms).
+
+- Laser Show's lamps: middle beams yellow, outer beams magenta and purple. That fits accent 1
+  in the middle and accent 3 outside, but with no track linked the palette was the default,
+  so the cover-accent mapping is not confirmed.
+- Kaleido with no track: a large black square sits in the centre with a white glow (the empty
+  cover slot); worth checking whether it appears when a track has no artwork.
+- Zero-g: a cube close to the camera again filled part of the frame as a flat slab, cut off
+  at the left edge (also seen in 4b).
+- Hot reload of `lasers.wgsl` was not tried.
+
 ## 5. Record and replay (`41dba6c` on `merge-autocue`)
 
 The replay branch's commit `90f5829` is on `merge-autocue` as `41dba6c` (the branch itself is
